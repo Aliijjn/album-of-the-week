@@ -49,3 +49,25 @@ npm start
 | `/aotw reroll` | Immediately draw, announce and record a new album (Manage Server required) |
 | `/aotw setup channel [role] [day] [time] [timezone]` | Configure or resume weekly announcements |
 | `/aotw pause` | Pause announcements while keeping queues and history |
+
+## Deploy to Railway
+
+Deploy the repository using its Dockerfile. Attach a **Railway Volume** to the bot service with mount path `/app/data`. Railway does not support Dockerfile `VOLUME` instructions; configure persistence on the service instead.
+
+Set these service variables:
+
+```text
+DISCORD_TOKEN=<your bot token>
+DATABASE_PATH=/app/data/album-of-the-week.sqlite
+RAILWAY_RUN_UID=0
+```
+
+`RAILWAY_RUN_UID=0` overrides the image's default `node` user so the bot can write to Railway's root-owned volume, following [Railway's permissions guidance](https://docs.railway.com/volumes#permissions).
+
+Keep one replica and disable service sleeping. Leave the start command unset to use the Dockerfile's command. If configuring an HTTP health check, use `/readyz`. Register commands locally using the steps above, then redeploy after saving the volume and variables. Mount only `/app/data`, not `/app`, so application files remain available.
+
+Local Docker Compose continues to use the named volume configured in `compose.yaml`:
+
+```bash
+docker compose up --build -d
+```
