@@ -1,0 +1,32 @@
+import {
+  ChannelType, InteractionContextType, SlashCommandBuilder,
+} from 'discord.js';
+
+export const commands = [
+  new SlashCommandBuilder().setName('aotw').setDescription('Manage album of the week')
+    .setContexts(InteractionContextType.Guild)
+    .addSubcommand(c => c.setName('add').setDescription('Add an album (up to 5 queued per server)')
+      .addStringOption(o => o.setName('title').setDescription('Album name').setRequired(true).setMaxLength(150))
+      .addStringOption(o => o.setName('artist').setDescription('Artist name').setRequired(true).setMaxLength(150)))
+    .addSubcommand(c => c.setName('list').setDescription('Show your queued albums'))
+    .addSubcommand(c => c.setName('remove').setDescription('Remove one of your queued albums')
+      .addIntegerOption(o => o.setName('id').setDescription('Album ID from /aotw list').setRequired(true).setMinValue(1)))
+    .addSubcommand(c => c.setName('current').setDescription('Show the most recently announced album'))
+    .addSubcommand(c => c.setName('history').setDescription('Browse all announced albums, newest first')
+      .addIntegerOption(o => o.setName('page').setDescription('Page number (5 albums per page)').setMinValue(1)))
+    .addSubcommand(c => c.setName('leaderboard').setDescription('Browse albums ranked by average rating'))
+    .addSubcommand(c => c.setName('rate').setDescription('Rate the active album or a previous pick, or update your rating')
+      .addNumberOption(o => o.setName('score').setDescription('Your rating from 0 to 10').setRequired(true).setMinValue(0).setMaxValue(10))
+      .addIntegerOption(o => o.setName('id').setDescription('Pick ID from /aotw history; omit for the active album').setMinValue(1)))
+    .addSubcommand(c => c.setName('status').setDescription('Show the weekly schedule and settings'))
+    .addSubcommand(c => c.setName('reroll').setDescription('Draw and announce a new album now (Manage Server required)'))
+    .addSubcommand(c => c.setName('setup').setDescription('Enable weekly picks or update settings')
+      .addChannelOption(o => o.setName('channel').setDescription('Announcement channel').setRequired(true)
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+      .addRoleOption(o => o.setName('role').setDescription('Role to ping; defaults to album-of-the-week'))
+      .addIntegerOption(o => o.setName('day').setDescription('Day of the week; default Sunday')
+        .addChoices(...['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((name, value) => ({ name, value }))))
+      .addStringOption(o => o.setName('time').setDescription('24-hour HH:mm; default 12:00').setMinLength(5).setMaxLength(5))
+      .addStringOption(o => o.setName('timezone').setDescription('Search and select a timezone; default UTC (GMT)').setMaxLength(80).setAutocomplete(true)))
+    .addSubcommand(c => c.setName('pause').setDescription('Pause weekly announcements; keep all data')),
+];
