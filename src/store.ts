@@ -32,7 +32,15 @@ export interface AlbumSummary {
 }
 
 export class UserError extends Error {}
-export interface RatedPick extends Pick { average: number | null; rating_count: number }
+export interface RatedPick extends Pick { average: number | null; rating_count: number; ratings_revealed: number }
+const revealed = `EXISTS (SELECT 1 FROM picks newer WHERE newer.guild_id=p.guild_id AND newer.id>p.id)`;
+const cleanName = (value: string) => value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+
+function validateNames(title: string, artist: string): void {
+  if (!title || !artist || title.length > 150 || artist.length > 150) {
+    throw new UserError('Album and artist must each contain 1-150 characters.');
+  }
+}
 
 export class Store {
   readonly db: DatabaseSync;
@@ -126,11 +134,8 @@ export class Store {
   }
 
   addAlbum(guildId: string, userId: string, title: string, artist: string): Album {
-    const clean = (value: string) => value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
-    title = clean(title); artist = clean(artist);
-    if (!title || !artist || title.length > 150 || artist.length > 150) {
-      throw new UserError('Album and artist must each contain 1–150 characters.');
-    }
+    title = cleanName(title); artist = cleanName(artist);
+    validateNames(title, artist);
     return this.transaction(() => {
       const guild = this.guild(guildId);
       const albums = this.albums(guildId, userId);
@@ -150,8 +155,54 @@ export class Store {
     return this.db.prepare('SELECT * FROM albums WHERE guild_id=? AND user_id=? ORDER BY id').all(guildId, userId) as unknown as Album[];
   }
 
+  searchAlbums(guildId: string, userId: string, command: 'rename' | 'remove' | 'rate' | 'ratings', admin: boolean, query: string) {
+    const terms = cleanName(query).toLowerCase().split(' ').filter(Boolean);
+    const rows = this.db.prepare(`
+      SELECT id,title,artist,user_id,'queue' AS kind,NULL AS scheduled_at FROM albums
+        WHERE guild_id=? AND ? IN ('rename','remove') AND (user_id=? OR (?='rename' AND ?))
+      UNION ALL
+      SELECT p.id,p.title,p.artist,p.user_id,'pick' AS kind,p.scheduled_at FROM picks p
+        WHERE p.guild_id=? AND p.status='sent' AND ? IN ('rename','rate','ratings')
+          AND (?!='rename' OR p.user_id=? OR ?)
+          AND (?!='ratings' OR ${revealed})
+      ORDER BY kind DESC,id DESC
+    `).iterate(guildId, command, userId, command, Number(admin), guildId, command, command, userId, Number(admin), command);
+    const matches: { id: number; title: string; artist: string; user_id: string; kind: 'queue' | 'pick'; scheduled_at: number | null }[] = [];
+    for (const row of rows) {
+      const album = row as unknown as typeof matches[number];
+      const name = cleanName(`${album.title} ${album.artist}`).toLowerCase();
+      if (terms.every(term => name.includes(term))) matches.push(album);
+      if (matches.length === 25) break;
+    }
+    return matches;
+  }
+
   removeAlbum(guildId: string, userId: string, id: number): boolean {
     return this.db.prepare('DELETE FROM albums WHERE guild_id=? AND user_id=? AND id=?').run(guildId, userId, id).changes > 0;
+  }
+
+  rename(guildId: string, userId: string, admin: boolean, entry: 'queue' | 'pick', id: number, title: string, artist?: string): Album {
+    if (!Number.isSafeInteger(id) || id < 1 || !['queue', 'pick'].includes(entry)) throw new UserError('Choose a valid entry type and ID.');
+    return this.transaction(() => {
+      const table = entry === 'queue' ? 'albums' : 'picks';
+      const album = this.db.prepare(`SELECT * FROM ${table} WHERE guild_id=? AND id=?`).get(guildId, id) as unknown as Album | Pick | undefined;
+      if (!album) throw new UserError('That entry was not found in this server. Check /aotw list or /aotw history.');
+      if (!admin && album.user_id !== userId) throw new UserError('Only the submitter or someone with Manage Server permission can rename this entry.');
+      if ('status' in album && album.status === 'pending') throw new UserError('Wait for this album announcement to finish before renaming it.');
+      title = cleanName(title);
+      artist = artist === undefined ? album.artist : cleanName(artist);
+      validateNames(title, artist);
+      if (entry === 'queue') {
+        if (this.albums(guildId, album.user_id).some(a => a.id !== id && a.title.toLowerCase() === title.toLowerCase() && a.artist.toLowerCase() === artist!.toLowerCase())) {
+          throw new UserError('That album is already in this user’s queue.');
+        }
+        this.db.prepare('UPDATE albums SET title=?,artist=?,title_key=?,artist_key=? WHERE guild_id=? AND id=?')
+          .run(title, artist, title.toLowerCase(), artist.toLowerCase(), guildId, id);
+      } else {
+        this.db.prepare('UPDATE picks SET title=?,artist=? WHERE guild_id=? AND id=?').run(title, artist, guildId, id);
+      }
+      return { ...album, title, artist };
+    });
   }
 
   removeMember(guildId: string, userId: string): void {
@@ -172,36 +223,45 @@ export class Store {
   }
 
   history(guildId: string, limit = 10, offset = 0): RatedPick[] {
-    return this.db.prepare(`SELECT p.*, AVG(r.score) AS average, COUNT(r.user_id) AS rating_count
+    return this.db.prepare(`SELECT p.*, ${revealed} AS ratings_revealed, AVG(r.score) AS average, COUNT(r.user_id) AS rating_count
       FROM picks p LEFT JOIN ratings r ON r.pick_id=p.id WHERE p.guild_id=? AND p.status='sent'
       GROUP BY p.id ORDER BY p.id DESC LIMIT ? OFFSET ?`).all(guildId, limit, offset) as unknown as RatedPick[];
   }
 
   leaderboard(guildId: string, limit = 5, offset = 0): RatedPick[] {
-    return this.db.prepare(`SELECT p.*, AVG(r.score) AS average, COUNT(r.user_id) AS rating_count
-      FROM picks p JOIN ratings r ON r.pick_id=p.id WHERE p.guild_id=? AND p.status='sent'
+    return this.db.prepare(`SELECT p.*, 1 AS ratings_revealed, AVG(r.score) AS average, COUNT(r.user_id) AS rating_count
+      FROM picks p JOIN ratings r ON r.pick_id=p.id WHERE p.guild_id=? AND p.status='sent' AND ${revealed}
       GROUP BY p.id ORDER BY average DESC, rating_count DESC, p.id DESC LIMIT ? OFFSET ?`)
       .all(guildId, limit, offset) as unknown as RatedPick[];
   }
 
   leaderboardCount(guildId: string): number {
     return (this.db.prepare(`SELECT COUNT(*) AS count FROM picks p WHERE p.guild_id=? AND p.status='sent'
-      AND EXISTS (SELECT 1 FROM ratings r WHERE r.pick_id=p.id)`).get(guildId) as { count: number }).count;
+      AND ${revealed} AND EXISTS (SELECT 1 FROM ratings r WHERE r.pick_id=p.id)`).get(guildId) as { count: number }).count;
   }
 
   private ratedPick(guildId: string, id: number): RatedPick | undefined {
-    return this.db.prepare(`SELECT p.*, AVG(r.score) AS average, COUNT(r.user_id) AS rating_count
+    return this.db.prepare(`SELECT p.*, ${revealed} AS ratings_revealed, AVG(r.score) AS average, COUNT(r.user_id) AS rating_count
       FROM picks p LEFT JOIN ratings r ON r.pick_id=p.id WHERE p.guild_id=? AND p.id=? AND p.status='sent'
       GROUP BY p.id`).get(guildId, id) as unknown as RatedPick | undefined;
+  }
+
+  ratings(guildId: string, id: number, limit = 20, offset = 0) {
+    const pick = this.ratedPick(guildId, id);
+    if (!pick) throw new UserError('That pick is not in this server’s announced history.');
+    if (!pick.ratings_revealed) throw new UserError('Ratings are hidden until the next album is picked.');
+    const ratings = this.db.prepare('SELECT user_id,score FROM ratings WHERE pick_id=? ORDER BY score DESC,user_id LIMIT ? OFFSET ?')
+      .all(id, limit, offset) as { user_id: string; score: number }[];
+    return { pick, ratings };
   }
 
   rate(guildId: string, userId: string, score: number, pickId?: number): RatedPick {
     if (!Number.isFinite(score) || score < 0 || score > 10) throw new UserError('Choose a rating from 0 to 10.');
     if (pickId !== undefined && (!Number.isSafeInteger(pickId) || pickId < 1)) throw new UserError('Choose a valid pick ID from /aotw history.');
     return this.transaction(() => {
-      if (pickId === undefined && this.pending(guildId)) throw new UserError('An album announcement is pending. Please rate it after delivery finishes, or specify a pick ID from /aotw history.');
+      if (pickId === undefined && this.pending(guildId)) throw new UserError('An album announcement is pending. Please rate it after delivery finishes, or select a previous album.');
       const current = pickId === undefined ? this.history(guildId, 1)[0] : this.ratedPick(guildId, pickId);
-      if (!current) throw new UserError(pickId === undefined ? 'There is no active album to rate yet.' : 'That pick is not in this server’s announced history. Use /aotw history to find its ID.');
+      if (!current) throw new UserError(pickId === undefined ? 'There is no active album to rate yet.' : 'That pick is not in this server’s announced history. Search again with the album option.');
       this.db.prepare(`INSERT INTO ratings(pick_id,user_id,score) VALUES (?,?,?)
         ON CONFLICT(pick_id,user_id) DO UPDATE SET score=excluded.score`).run(current.id, userId, score);
       return this.ratedPick(guildId, current.id)!;

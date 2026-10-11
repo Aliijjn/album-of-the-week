@@ -39,16 +39,24 @@ npm start
 | Command | Purpose |
 | --- | --- |
 | `/aotw add title artist` | Add a submission, up to five queued albums per user per server |
-| `/aotw list` | View your queue and album IDs |
-| `/aotw remove id` | Remove an album you own in this server |
+| `/aotw list` | View your queued albums |
+| `/aotw rename album title [artist]` | Correct a queued or picked album (submitter or Manage Server required) |
+| `/aotw remove album` | Remove an album you own in this server |
 | `/aotw current` | View the latest successfully announced album |
 | `/aotw history [page]` | Browse albums and average ratings with Previous/Next buttons, five per page |
-| `/aotw rate score [id]` | Rate the active album or a previous pick from 0 to 10, updating your existing rating |
+| `/aotw rate score [album]` | Rate the active album or a previous pick from 0 to 10, updating your existing rating |
 | `/aotw leaderboard` | Browse rated albums ranked by average score with Previous/Next buttons |
+| `/aotw ratings album` | Look back at individual scores for a previous pick, highest first, with Previous/Next buttons |
 | `/aotw status` | View schedule, channel, role, round and delivery status |
 | `/aotw reroll` | Immediately draw, announce and record a new album (Manage Server required) |
 | `/aotw setup channel [role] [day] [time] [timezone]` | Configure or resume weekly announcements |
 | `/aotw pause` | Pause announcements while keeping queues and history |
+
+Ratings and averages stay hidden until the next album is picked, whether scheduled or rerolled. The active album is excluded from the leaderboard. Your rating confirmation shows your own score. Once revealed, individual scores are available through `/aotw ratings album:<selection>`. Previous ratings can still be updated with `/aotw rate score:8.5 album:<selection>`.
+
+The `album` option is a searchable picker: type part of the title or artist, then select a suggestion. It shows up to 25 matches; narrow your search to find older albums. Rename combines queued and picked albums, with labels indicating which is which; picked albums include their UTC selection date and time to distinguish repeat picks. Only entries you can change are suggested. Omit `album` when rating the active album.
+
+For rename, the artist is unchanged if omitted. Renaming keeps the entry's owner and ratings; it updates future results but does not edit previously sent Discord messages or captured summaries.
 
 ## Deploy to Railway
 

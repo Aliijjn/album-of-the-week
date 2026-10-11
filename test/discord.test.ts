@@ -4,7 +4,7 @@ import { Collection, PermissionsBitField, PermissionFlagsBits, type ChatInputCom
 import { discordDelivery, handleCommand } from '../src/discord.js';
 import { Store, type Guild, type Pick } from '../src/store.js';
 
-test('rate command forwards an optional history ID and reports the selected album', async t => {
+test('rate command forwards an optional album selection and reports the selected album', async t => {
   const store = new Store(':memory:');
   t.after(() => store.close());
   store.configure('guild', 'channel', 'role', undefined, 0);
@@ -21,7 +21,7 @@ test('rate command forwards an optional history ID and reports the selected albu
     inGuild: () => true, deferReply: async () => {},
     editReply: async (reply: { content: string }) => { replies.push(reply); },
     guildId: 'guild', user: { id: 'a' }, commandName: 'aotw',
-    options: { getSubcommand: () => 'rate', getNumber: () => 8, getInteger: () => id },
+    options: { getSubcommand: () => 'rate', getNumber: () => 8, getString: () => id === null ? null : `pick:${id}` },
   } as unknown as ChatInputCommandInteraction;
   await handleCommand(interaction, store);
   assert.match(replies[0]!.content, /Old album/);
@@ -29,6 +29,8 @@ test('rate command forwards an optional history ID and reports the selected albu
   id = null;
   await handleCommand(interaction, store);
   assert.match(replies[1]!.content, /Current album/);
+  assert.match(replies[1]!.content, /Ratings hidden/);
+  assert.doesNotMatch(replies[1]!.content, /8.00|1 rating/);
   assert.equal(store.history('guild')[0]?.average, 8);
 });
 

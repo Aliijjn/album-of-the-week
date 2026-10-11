@@ -1,3 +1,4 @@
+import { parseAlbum } from './autocomplete.js';
 import {
   Client, DiscordAPIError, EmbedBuilder, MessageFlags, PermissionFlagsBits,
   type ChatInputCommandInteraction,
@@ -6,7 +7,7 @@ import type { Delivery, Scheduler } from './scheduler.js';
 import { createHash } from 'node:crypto';
 import { Store, UserError, type AlbumSummary } from './store.js';
 
-import { albumText, ratingText, albumPage } from './pages.js';
+import { albumText, ratingText, albumPage, ratingsPage } from './pages.js';
 
 export function discordDelivery(client: Client): Delivery {
   return {
@@ -61,7 +62,7 @@ export function discordDelivery(client: Client): Delivery {
         content: `<@&${role.id}> this week’s album is here!`,
         embeds: [new EmbedBuilder().setColor(0x815ac0).setTitle('Album of the week')
           .setDescription(albumText(pick)).addFields({ name: 'Submitted by', value: `<@${pick.user_id}>` })
-          .setFooter({ text: `Round ${pick.round} · Pick #${pick.id}` }).setTimestamp(pick.scheduled_at)],
+          .setFooter({ text: `Round ${pick.round}` }).setTimestamp(pick.scheduled_at)],
         allowedMentions: { parse: [] as [], roles: [role.id], users: [], repliedUser: false },
       };
       const message = await channel.send({ ...payload, nonce: pick.nonce, enforceNonce: true });
@@ -82,28 +83,36 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, st
   const respond = async (content: string) => { await interaction.editReply({ content, allowedMentions: { parse: [] } }); };
   try {
     if (interaction.commandName !== 'aotw') throw new UserError('This command has moved. Use /aotw.');
-    if (!['add', 'list', 'remove', 'rate', 'setup', 'pause', 'reroll', 'status', 'history', 'leaderboard', 'current'].includes(sub)) {
+    if (!['add', 'list', 'rename', 'remove', 'rate', 'ratings', 'setup', 'pause', 'reroll', 'status', 'history', 'leaderboard', 'current'].includes(sub)) {
       throw new UserError('This command is out of date. Refresh Discord and choose a current /aotw command.');
     }
     if (['add', 'list', 'remove'].includes(sub)) {
       if (sub === 'add') {
         const album = store.addAlbum(guildId, userId, interaction.options.getString('title', true), interaction.options.getString('artist', true));
-        await respond(`Added #${album.id}: ${albumText(album)}. You have ${store.albums(guildId, userId).length}/5 albums queued.`);
+        await respond(`Added: ${albumText(album)}. You have ${store.albums(guildId, userId).length}/5 albums queued.`);
       } else if (sub === 'list') {
         const albums = store.albums(guildId, userId);
         // Embeds accommodate five maximum-length album + artist names safely.
         await interaction.editReply({
           embeds: [new EmbedBuilder().setTitle(`Your queue (${albums.length}/5)`)
-            .setDescription(albums.map(a => `#${a.id} · ${albumText(a)}`).join('\n') || 'Your queue is empty. Use /aotw add.')], allowedMentions: { parse: [] }
+            .setDescription(albums.map(a => albumText(a)).join('\n') || 'Your queue is empty. Use /aotw add.')], allowedMentions: { parse: [] }
         });
       } else if (sub === 'remove') {
-        const removed = store.removeAlbum(guildId, userId, interaction.options.getInteger('id', true));
-        await respond(removed ? 'Album removed from your queue.' : 'That album is not in your queue. Use /aotw list to find its ID.');
+        const removed = store.removeAlbum(guildId, userId, parseAlbum(interaction.options.getString('album', true), 'queue').id);
+        await respond(removed ? 'Album removed from your queue.' : 'That album is not in your queue. Search again with /aotw remove.');
       }
+    } else if (sub === 'rename') {
+      const { kind: entry, id } = parseAlbum(interaction.options.getString('album', true));
+      const album = store.rename(guildId, userId, interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false,
+        entry, id, interaction.options.getString('title', true), interaction.options.getString('artist') ?? undefined);
+      await respond(`Renamed: ${albumText(album)}.`);
+    } else if (sub === 'ratings') {
+      await interaction.editReply(ratingsPage(store, guildId, userId, parseAlbum(interaction.options.getString('album', true), 'pick').id));
     } else if (sub === 'rate') {
       const score = interaction.options.getNumber('score', true);
-      const pick = store.rate(guildId, userId, score, interaction.options.getInteger('id') ?? undefined);
-      await respond(`Your rating for pick #${pick.id}: ${albumText(pick)} is ${score}/10. Average: ${ratingText(pick)}.`);
+      const selected = interaction.options.getString('album');
+      const pick = store.rate(guildId, userId, score, selected === null ? undefined : parseAlbum(selected, 'pick').id);
+      await respond(`Your rating for ${albumText(pick)} is ${score}/10. ${ratingText(pick)}.`);
     } else if (['setup', 'pause', 'reroll'].includes(sub)) {
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) throw new UserError('You need Manage Server permission.');
       if (sub === 'reroll') {
@@ -162,7 +171,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, st
           const current = store.history(guildId, 1)[0];
           await interaction.editReply({
             embeds: [new EmbedBuilder().setTitle('Current album of the week')
-              .setDescription(current ? `${albumText(current)}\nPick #${current.id} · Submitted by <@${current.user_id}>\n${ratingText(current)}` : 'No albums announced yet.')], allowedMentions: { parse: [] }
+              .setDescription(current ? `${albumText(current)}\nSubmitted by <@${current.user_id}>\n${ratingText(current)}` : 'No albums announced yet.')], allowedMentions: { parse: [] }
           });
         }
       }

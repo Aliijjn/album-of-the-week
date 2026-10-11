@@ -26,8 +26,8 @@ test('limits, normalization, ownership and server isolation', t => {
   assert.throws(() => store.addAlbum('guild', 'alice', 'album one', 'artist'), /already in your queue/);
   for (let i = 0; i < 4; i++) store.addAlbum('guild', 'alice', `Album ${i}`, 'Artist');
   assert.throws(() => store.addAlbum('guild', 'alice', 'Sixth', 'Artist'), /5 albums/);
-  assert.throws(() => store.addAlbum('guild', 'bob', ' ', 'Artist'), /1–150/);
-  assert.throws(() => store.addAlbum('guild', 'bob', 'a'.repeat(151), 'Artist'), /1–150/);
+  assert.throws(() => store.addAlbum('guild', 'bob', ' ', 'Artist'), /1-150/);
+  assert.throws(() => store.addAlbum('guild', 'bob', 'a'.repeat(151), 'Artist'), /1-150/);
   assert.equal(store.removeAlbum('guild', 'bob', first.id), false);
   assert.equal(store.removeAlbum('other', 'alice', first.id), false);
   store.addAlbum('other', 'alice', 'Album One', 'Artist');

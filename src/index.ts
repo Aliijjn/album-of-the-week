@@ -5,7 +5,7 @@ import { discordDelivery, handleCommand } from './discord.js';
 import { handlePageButton } from './pages.js';
 import { Scheduler } from './scheduler.js';
 import { createApp } from './http.js';
-import { handleAutocomplete } from './timezones.js';
+import { handleAutocomplete } from './autocomplete.js';
 
 const token = requiredEnv('DISCORD_TOKEN');
 const port = portFromEnv();
@@ -23,7 +23,7 @@ client.on(Events.InteractionCreate, interaction => {
   if (stopping) return;
   let work: Promise<void> | undefined;
   if (interaction.isAutocomplete()) {
-    work = handleAutocomplete(interaction);
+    work = handleAutocomplete(interaction, store);
   } else if (interaction.isButton()) {
     work = handlePageButton(interaction, store);
   } else if (interaction.isChatInputCommand()) {
