@@ -82,20 +82,34 @@ const helpSections: { key: HelpSection; label: string; intro: string; tips: stri
     tips: 'Dates accept Discord timestamps or an explicit timezone, such as `2026-10-11T12:00+02:00`. Edits preserve ratings; deleting history removes its ratings. The active album cannot be deleted. Round counters are each user’s **last selected round**, not lifetime pick counts.' },
 ];
 
+const helpLabels: Record<string, string> = {
+  current: 'See the current album', rate: 'Rate an album', ratings: 'See everyone’s ratings',
+  history: 'Browse past albums', leaderboard: 'See the highest-rated albums',
+  status: 'Check the schedule', timezone: 'Set your timezone',
+  add: 'Add an album to your queue', list: 'View your queue', rename: 'Correct a queued album', remove: 'Remove a queued album',
+  setup: 'Configure weekly picks', pause: 'Pause weekly picks', reroll: 'Pick a new album now',
+  'add-history': 'Add a past album', edit: 'Correct a current or past album', 'delete-history': 'Delete a past album',
+  rounds: 'View everyone’s round counters', 'set-round': 'Change a user’s round counter',
+};
+const helpOrder = ['current', 'rate', 'ratings', 'history', 'leaderboard', 'status', 'timezone',
+  'add', 'list', 'rename', 'remove', 'setup', 'pause', 'reroll', 'add-history', 'edit', 'delete-history', 'rounds', 'set-round'];
+
 export function helpReply(userId: string, section: HelpSection = 'listen') {
   const selected = helpSections.find(item => item.key === section)!;
   const entries = commandHelpFields().filter(command => section === 'queue' ? command.name.startsWith('/aotw queue ')
     : section === 'admin' ? command.name.startsWith('/aotw admin ')
     : !command.name.startsWith('/aotw queue ') && !command.name.startsWith('/aotw admin '));
+  const shortName = (name: string) => name.split(' ')[section === 'listen' ? 1 : 2]!;
+  entries.sort((a, b) => helpOrder.indexOf(shortName(a.name)) - helpOrder.indexOf(shortName(b.name)));
   return {
     embeds: [new EmbedBuilder().setColor(0x815ac0).setTitle(`Album of the week - ${selected.label}`)
-      .setDescription(`${selected.intro}\n\nChoose a section below. **<required>** options must be filled in; **[optional]** options can be omitted. For **album**, type a title or artist and select a match.`)
-      .addFields(entries.map((command, index) => ({
-        name: `${index === entries.length - 1 ? '└─' : '├─'} ${command.name.split(' ').slice(section === 'listen' ? 1 : 2)[0]}`,
-        value: `\`\`\`text\n${command.name}\n\`\`\`\n${command.value}`,
+      .setDescription(`${selected.intro}\nFor an **album** option, search by title or artist and choose a match.`)
+      .addFields(entries.map(command => ({
+        name: helpLabels[shortName(command.name)] ?? shortName(command.name),
+        value: `${command.value}\n\`${command.name}\`${shortName(command.name) === 'rate' ? '\nExample: `/aotw rate score:8.5` rates the current album.' : ''}`,
       })))
       .addFields({ name: 'Good to know', value: selected.tips })
-      .setFooter({ text: 'Listen & rate • Your queue • Admin' })],
+      .setFooter({ text: '<required> = must fill in · [optional] = can leave out' })],
     components: [new ActionRowBuilder<ButtonBuilder>().addComponents(helpSections.map(item => new ButtonBuilder()
       .setCustomId(`aotw:help:${userId}:${item.key}`).setLabel(item.label)
       .setStyle(item.key === section ? ButtonStyle.Primary : ButtonStyle.Secondary).setDisabled(item.key === section)))],
