@@ -12,7 +12,7 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 
 FROM oven/bun:1.4.3-slim
-ENV NODE_ENV=production PORT=3000 DATABASE_PATH=/app/data/album-of-the-week.sqlite
+ENV NODE_ENV=production PORT=3000
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./

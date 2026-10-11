@@ -78,6 +78,12 @@ RAILWAY_RUN_UID=0
 
 `RAILWAY_RUN_UID=0` overrides the image's default `bun` user so the bot can write to Railway's root-owned volume, following [Railway's permissions guidance](https://docs.railway.com/volumes#permissions).
 
+**Keep the existing database filename.** Older `.env` examples used `aotw.sqlite`. If that is your database, use `/app/data/aotw.sqlite` instead. You can also omit `DATABASE_PATH`: the bot uses Railway's automatically provided `RAILWAY_VOLUME_MOUNT_PATH` and detects either existing filename. If both exist, explicitly select the right one. Do not manually set `RAILWAY_VOLUME_MOUNT_PATH`; Railway supplies it when a volume is attached.
+
+The bot refuses to start on Railway without a volume or with a database path outside it. It also refuses to create a missing database when it finds an existing database under the other default filename. Startup logs show the resolved path, whether the file already exists, and record counts so persistence can be checked after a redeploy.
+
+If data disappears on redeployment, inspect the service's existing volume and its files before changing paths. A directory created by the Dockerfile is not persistent by itself. Reattach the original volume if it was detached; do not replace it with a new empty volume. If the old database is still in a running container's temporary storage, stop writes and take a consistent SQLite backup before replacing that deployment. This code change cannot recover a database from a discarded container; use an available backup if needed.
+
 Keep one replica and disable service sleeping. Leave the start command unset to use the Dockerfile's command. If configuring an HTTP health check, use `/readyz`. Register commands locally using the steps above, then redeploy after saving the volume and variables. Mount only `/app/data`, not `/app`, so application files remain available.
 
 Local Docker Compose continues to use the named volume configured in `compose.yaml`:

@@ -6,10 +6,16 @@ import { handlePageButton } from './pages.js';
 import { Scheduler } from './scheduler.js';
 import { createApp } from './http.js';
 import { handleAutocomplete } from './autocomplete.js';
+import { databasePath } from './database-path.js';
+import { existsSync } from 'node:fs';
 
 const token = requiredEnv('DISCORD_TOKEN');
 const port = portFromEnv();
-const store = new Store(process.env.DATABASE_PATH || './data/album-of-the-week.sqlite');
+const path = databasePath();
+const existingDatabase = existsSync(path);
+console.log(`Database: ${path} (${existingDatabase ? 'existing file' : 'new file'})`);
+const store = new Store(path);
+console.log('Database records:', store.db.query('SELECT (SELECT COUNT(*) FROM guilds) AS servers, (SELECT COUNT(*) FROM albums) AS queued_albums, (SELECT COUNT(*) FROM picks) AS picks, (SELECT COUNT(*) FROM ratings) AS ratings').get());
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const scheduler = new Scheduler(store, discordDelivery(client));
 let stopping = false;
