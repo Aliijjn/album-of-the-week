@@ -39,6 +39,7 @@ npm start
 | Command | Purpose |
 | --- | --- |
 | `/aotw add title artist` | Add a submission, up to five queued albums per user per server |
+| `/aotw timezone [timezone]` | Set your personal timezone for album pickers; omit to reset to the server setting |
 | `/aotw list` | View your queued albums |
 | `/aotw rename album title [artist]` | Correct a queued or picked album (submitter or Manage Server required) |
 | `/aotw remove album` | Remove an album you own in this server |
@@ -54,7 +55,7 @@ npm start
 
 Ratings and averages stay hidden until the next album is picked, whether scheduled or rerolled. The active album is excluded from the leaderboard. Your rating confirmation shows your own score. Once revealed, individual scores are available through `/aotw ratings album:<selection>`. Previous ratings can still be updated with `/aotw rate score:8.5 album:<selection>`.
 
-The `album` option is a searchable picker: type part of the title or artist, then select a suggestion. It shows up to 25 matches; narrow your search to find older albums. Rename combines queued and picked albums, with labels indicating which is which; picked albums include their UTC selection date and time to distinguish repeat picks. Only entries you can change are suggested. Omit `album` when rating the active album.
+The `album` option is a searchable picker: type part of the title or artist, then select a suggestion. It shows up to 25 matches; narrow your search to find older albums. Rename combines queued and picked albums, with labels indicating which is which; picked albums include their selection date and time in your saved timezone (or the server timezone by default), formatted using your Discord language to distinguish repeat picks. Only entries you can change are suggested. Omit `album` when rating the active album.
 
 For rename, the artist is unchanged if omitted. Renaming keeps the entry's owner and ratings; it updates future results but does not edit previously sent Discord messages or captured summaries.
 
@@ -79,3 +80,5 @@ Local Docker Compose continues to use the named volume configured in `compose.ya
 ```bash
 docker compose up --build -d
 ```
+
+Discord does not expose your device timezone to bots. Set `/aotw timezone timezone:Europe/Amsterdam` once to personalize picker times across servers. Daylight saving is handled automatically; the UTC offset is shown to avoid ambiguity. This does not change the weekly schedule.

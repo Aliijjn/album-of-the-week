@@ -19,7 +19,7 @@ export function timezoneChoices(query: string) {
 
 export async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
   const focused = interaction.options.getFocused(true);
-  if (interaction.commandName === 'aotw' && interaction.options.getSubcommand() === 'setup' && focused.name === 'timezone') {
+  if (interaction.commandName === 'aotw' && ['setup', 'timezone'].includes(interaction.options.getSubcommand()) && focused.name === 'timezone') {
     await interaction.respond(timezoneChoices(String(focused.value)));
   } else {
     await interaction.respond([]);

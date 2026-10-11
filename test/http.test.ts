@@ -21,5 +21,5 @@ test('health and readiness distinguish liveness from Discord connectivity', asyn
 test('slash command payloads pass Discord builder validation', () => {
   assert.deepEqual(commands.map(command => command.toJSON().name), ['aotw']);
   assert.deepEqual(commands[0]!.toJSON().options?.map(option => option.name),
-    ['add', 'list', 'rename', 'remove', 'current', 'history', 'leaderboard', 'ratings', 'rate', 'status', 'reroll', 'setup', 'pause']);
+    ['add', 'list', 'timezone', 'rename', 'remove', 'current', 'history', 'leaderboard', 'ratings', 'rate', 'status', 'reroll', 'setup', 'pause']);
 });

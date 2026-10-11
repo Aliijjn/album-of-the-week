@@ -83,7 +83,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, st
   const respond = async (content: string) => { await interaction.editReply({ content, allowedMentions: { parse: [] } }); };
   try {
     if (interaction.commandName !== 'aotw') throw new UserError('This command has moved. Use /aotw.');
-    if (!['add', 'list', 'rename', 'remove', 'rate', 'ratings', 'setup', 'pause', 'reroll', 'status', 'history', 'leaderboard', 'current'].includes(sub)) {
+    if (!['add', 'list', 'timezone', 'rename', 'remove', 'rate', 'ratings', 'setup', 'pause', 'reroll', 'status', 'history', 'leaderboard', 'current'].includes(sub)) {
       throw new UserError('This command is out of date. Refresh Discord and choose a current /aotw command.');
     }
     if (['add', 'list', 'remove'].includes(sub)) {
@@ -101,6 +101,10 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, st
         const removed = store.removeAlbum(guildId, userId, parseAlbum(interaction.options.getString('album', true), 'queue').id);
         await respond(removed ? 'Album removed from your queue.' : 'That album is not in your queue. Search again with /aotw remove.');
       }
+    } else if (sub === 'timezone') {
+      const timezone = interaction.options.getString('timezone');
+      store.setUserTimezone(userId, timezone);
+      await respond(timezone ? `Album picker times will use ${timezone}.` : 'Album picker times will use each server’s configured timezone.');
     } else if (sub === 'rename') {
       const { kind: entry, id } = parseAlbum(interaction.options.getString('album', true));
       const album = store.rename(guildId, userId, interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false,

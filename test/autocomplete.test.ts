@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PermissionsBitField, PermissionFlagsBits, type AutocompleteInteraction, type ChatInputCommandInteraction } from 'discord.js';
 import { Store } from '../src/store.js';
-import { handleAutocomplete, parseAlbum } from '../src/autocomplete.js';
+import { handleAutocomplete, parseAlbum, pickedTime } from '../src/autocomplete.js';
 import { handleCommand } from '../src/discord.js';
 import { commands } from '../src/commands.js';
 
@@ -114,4 +114,32 @@ test('album commands register searchable string options and rate keeps selection
     assert.equal(Boolean(album.required), name !== 'rate');
     assert.ok(!command.options!.some(o => ['id', 'entry'].includes(o.name)));
   }
+});
+
+
+test('picker times use personal timezone, daylight saving, locale and server fallback', async t => {
+  const store = new Store(':memory:');
+  t.after(() => store.close());
+  store.configure('g', 'channel', 'role', { weekday: 0, hour: 12, minute: 0, timezone: 'Asia/Tokyo' }, 0);
+  publish(store, 'Album');
+  let label = '';
+  const interaction = {
+    commandName: 'aotw', inGuild: () => true, guildId: 'g', user: { id: 'owner' }, locale: 'en-GB',
+    options: { getSubcommand: () => 'rename', getFocused: () => ({ name: 'album', value: '' }) },
+    respond: async (choices: { name: string }[]) => { label = choices[0]!.name; },
+  } as unknown as AutocompleteInteraction;
+  await handleAutocomplete(interaction, store);
+  assert.match(label, /GMT\+9/);
+  store.setUserTimezone('owner', 'Europe/Amsterdam');
+  await handleAutocomplete(interaction, store);
+  assert.match(label, /GMT\+1/);
+  assert.doesNotMatch(label, /T\d\d:|\.000Z/);
+  assert.match(pickedTime(Date.parse('2026-10-11T10:54:20.651Z'), 'Europe/Amsterdam'), /12:54 GMT\+2/);
+  assert.match(pickedTime(Date.parse('2026-12-11T10:54:20.651Z'), 'Europe/Amsterdam'), /11:54 GMT\+1/);
+  assert.notEqual(pickedTime(0, 'UTC', 'en-US'), pickedTime(0, 'UTC', 'nl'));
+  assert.throws(() => store.setUserTimezone('owner', 'invalid'), /valid timezone/);
+  assert.equal(store.userTimezone('owner'), 'Europe/Amsterdam');
+  store.setUserTimezone('owner', null);
+  await handleAutocomplete(interaction, store);
+  assert.match(label, /GMT\+9/);
 });

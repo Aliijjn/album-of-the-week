@@ -52,6 +52,7 @@ export class Store {
       PRAGMA journal_mode = WAL;
       PRAGMA foreign_keys = ON;
       PRAGMA busy_timeout = 5000;
+      CREATE TABLE IF NOT EXISTS user_preferences (user_id TEXT PRIMARY KEY, timezone TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS guilds (
         id TEXT PRIMARY KEY, channel_id TEXT, role_id TEXT, enabled INTEGER NOT NULL DEFAULT 0,
         weekday INTEGER NOT NULL DEFAULT 0, hour INTEGER NOT NULL DEFAULT 12,
@@ -96,6 +97,20 @@ export class Store {
   }
 
   close(): void { this.db.close(); }
+
+  userTimezone(userId: string): string | undefined {
+    return (this.db.prepare('SELECT timezone FROM user_preferences WHERE user_id=?').get(userId) as { timezone: string } | undefined)?.timezone;
+  }
+
+  setUserTimezone(userId: string, timezone: string | null): void {
+    if (timezone === null) {
+      this.db.prepare('DELETE FROM user_preferences WHERE user_id=?').run(userId);
+      return;
+    }
+    try { new Intl.DateTimeFormat('en', { timeZone: timezone }).format(); }
+    catch { throw new UserError('Choose a valid timezone, such as Europe/Amsterdam.'); }
+    this.db.prepare('INSERT INTO user_preferences(user_id,timezone) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET timezone=excluded.timezone').run(userId, timezone);
+  }
 
   private transaction<T>(work: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');
