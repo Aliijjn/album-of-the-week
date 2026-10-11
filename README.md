@@ -1,16 +1,14 @@
 # Album of the week
 
 A Discord bot that gives each server one shared album to listen to each week. Default schedule: Sunday at 12:00 UTC/GMT.
-Uses TS, Express, discord.js and SQLite. Vibe coded for 99% by Astra :))
+Uses Bun, TypeScript, Express, discord.js and SQLite. Vibe coded for 99% by Astra :))
 
 ## Run in WSL
 
-Use Node **22.18 or newer** (Node 22 is recorded in `.nvmrc`). The system Node 18 installation is too old. From this project directory in Ubuntu:
+Install **Bun 1.4.3 or newer** in WSL using the [Bun installation instructions](https://bun.com/docs/installation). The tested version is recorded in `.bun-version`. From this project directory in Ubuntu:
 
 ```bash
-source ~/.nvm/nvm.sh
-nvm use
-npm ci
+bun install --frozen-lockfile
 cp .env.example .env
 ```
 
@@ -21,43 +19,50 @@ cp .env.example .env
 5. Register and start:
 
 ```bash
-npm run register
-npm run dev
+bun run register
+bun run dev
 ```
 
-In Discord, run `/aotw setup channel:#album-club`. The account configuring the bot needs **Manage Server**. The role defaults to `album-of-the-week`; if there are duplicate roles with that name, select the intended role explicitly. Submit your first album with `/aotw add`.
+In Discord, run `/aotw admin setup channel:#album-club`. The account configuring the bot needs **Manage Server**. The role defaults to `album-of-the-week`; if there are duplicate roles with that name, select the intended role explicitly. Submit your first album with `/aotw queue add`.
 
 For a compiled production run:
 
 ```bash
-npm run build
-npm start
+bun run build
+bun run start
 ```
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `/aotw add title artist` | Add a submission, up to five queued albums per user per server |
+| `/aotw help` | List all commands, their options, permissions and uses |
+| `/aotw queue add title artist` | Add a submission, up to five queued albums per user per server |
 | `/aotw timezone [timezone]` | Set your personal timezone for album pickers; omit to reset to the server setting |
-| `/aotw list` | View your queued albums |
-| `/aotw rename album title [artist]` | Correct a queued or picked album (submitter or Manage Server required) |
-| `/aotw remove album` | Remove an album you own in this server |
+| `/aotw queue list` | View your queued albums |
+| `/aotw queue rename album title [artist]` | Rename a queued album (submitter or Manage Server required) |
+| `/aotw queue remove album` | Remove an album you own in this server |
 | `/aotw current` | View the latest successfully announced album |
 | `/aotw history [page]` | Browse albums and average ratings with Previous/Next buttons, five per page |
 | `/aotw rate score [album]` | Rate the active album or a previous pick from 0 to 10, updating your existing rating |
 | `/aotw leaderboard` | Browse rated albums ranked by average score with Previous/Next buttons |
 | `/aotw ratings album` | Look back at individual scores for a previous pick, highest first, with Previous/Next buttons |
 | `/aotw status` | View schedule, channel, role, round and delivery status |
-| `/aotw reroll` | Immediately draw, announce and record a new album (Manage Server required) |
-| `/aotw setup channel [role] [day] [time] [timezone]` | Configure or resume weekly announcements |
-| `/aotw pause` | Pause announcements while keeping queues and history |
+| `/aotw admin reroll` | Immediately draw, announce and record a new album (Manage Server required) |
+| `/aotw admin setup channel [role] [day] [time] [timezone]` | Configure or resume weekly announcements |
+| `/aotw admin pause` | Pause announcements while keeping queues and history |
+| `/aotw admin add-history title artist start end user` | Import a past album without changing the active album, queue, schedule or round counters |
+| `/aotw admin edit album [title] [artist] [start] [end] [user]` | Edit a historical or active album, preserving ratings; the active album cannot have an end time |
+| `/aotw admin delete-history album` | Delete a past album and all its ratings; cannot delete the active album |
+| `/aotw admin rounds` | Browse each participant’s last selected round, queue count and eligibility |
+| `/aotw admin set-round user round` | Set a user’s last selected round, from 0 through the current server round |
+
 
 Ratings and averages stay hidden until the next album is picked, whether scheduled or rerolled. The active album is excluded from the leaderboard. Your rating confirmation shows your own score. Once revealed, individual scores are available through `/aotw ratings album:<selection>`. Previous ratings can still be updated with `/aotw rate score:8.5 album:<selection>`.
 
-The `album` option is a searchable picker: type part of the title or artist, then select a suggestion. It shows up to 25 matches; narrow your search to find older albums. Rename combines queued and picked albums, with labels indicating which is which; picked albums include their selection date and time in your saved timezone (or the server timezone by default), formatted using your Discord language to distinguish repeat picks. Only entries you can change are suggested. Omit `album` when rating the active album.
+The `album` option is a searchable picker: type part of the title or artist, then select a suggestion. It shows up to 25 matches; narrow your search to find older albums. Rename only offers queued albums. Admin edit offers historical and active albums. Picked albums include their selection date and time in your saved timezone (or the server timezone by default), formatted using your Discord language to distinguish repeat picks. Only entries you can change are suggested. Omit `album` when rating the active album.
 
-For rename, the artist is unchanged if omitted. Renaming keeps the entry's owner and ratings; it updates future results but does not edit previously sent Discord messages or captured summaries.
+For queue rename, the artist is unchanged if omitted. Editing an announced album requires `/aotw admin edit`; existing ratings are preserved. Previously sent Discord messages and captured summaries are not edited.
 
 ## Deploy to Railway
 
@@ -71,7 +76,7 @@ DATABASE_PATH=/app/data/album-of-the-week.sqlite
 RAILWAY_RUN_UID=0
 ```
 
-`RAILWAY_RUN_UID=0` overrides the image's default `node` user so the bot can write to Railway's root-owned volume, following [Railway's permissions guidance](https://docs.railway.com/volumes#permissions).
+`RAILWAY_RUN_UID=0` overrides the image's default `bun` user so the bot can write to Railway's root-owned volume, following [Railway's permissions guidance](https://docs.railway.com/volumes#permissions).
 
 Keep one replica and disable service sleeping. Leave the start command unset to use the Dockerfile's command. If configuring an HTTP health check, use `/readyz`. Register commands locally using the steps above, then redeploy after saving the volume and variables. Mount only `/app/data`, not `/app`, so application files remain available.
 
@@ -82,3 +87,11 @@ docker compose up --build -d
 ```
 
 Discord does not expose your device timezone to bots. Set `/aotw timezone timezone:Europe/Amsterdam` once to personalize picker times across servers. Daylight saving is handled automatically; the UTC offset is shown to avoid ambiguity. This does not change the weekly schedule.
+
+## Moving from Node to Bun
+
+Keep your existing `DATABASE_PATH` value and Railway volume mounted at `/app/data`. Bun opens the same SQLite database directly; no export, reset or data conversion is needed. Deploy the updated Dockerfile and leave Railway's custom start command unset (or use `bun dist/index.js`). Local `.env` files are loaded automatically by Bun. Run `bun run check` to type-check, test and build. Command registration is unchanged by this runtime migration.
+
+All `/aotw admin` commands require **Manage Server**. History imports and edits use dates with an explicit timezone offset (for example `2026-10-11T12:00+02:00`) or Discord timestamps (for example `<t:1791712800:F>`). End must be later than start, and dates cannot be in the future. Imported albums can be rated immediately. History is ordered by start time. Edits and deletions leave old Discord messages unchanged.
+
+The per-user counter is the **last selected round**, not a lifetime pick count. A user with queued albums and a counter below the current server round is eligible; a counter equal to the current round means they have already had their turn. `set-round` changes eligibility without rewriting history or changing the server round. History and round changes wait until any pending announcement finishes.

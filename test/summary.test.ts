@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, onTestFinished } from 'bun:test';
 import { PermissionsBitField, PermissionFlagsBits, type Client, type EmbedBuilder } from 'discord.js';
 import { Store, type AlbumSummary } from '../src/store.js';
 import { discordDelivery } from '../src/discord.js';
 import { Scheduler } from '../src/scheduler.js';
 
 for (const trigger of ['scheduled', 'reroll'] as const) {
-  test(`${trigger} publishes the notice before sorted ratings and the next album and resumes a partially delivered summary`, async t => {
+  test(`${trigger} publishes the notice before sorted ratings and the next album and resumes a partially delivered summary`, async () => {
     const store = new Store(':memory:');
-    t.after(() => store.close());
+    onTestFinished(() => store.close());
     store.configure('guild', 'channel', 'role', undefined, 0);
     store.addAlbum('guild', 'submitter', 'Previous album', 'Artist');
     type Payload = { content?: string; embeds?: EmbedBuilder[]; allowedMentions: unknown; nonce: string };
@@ -76,9 +76,9 @@ for (const trigger of ['scheduled', 'reroll'] as const) {
   });
 }
 
-test('a previous album without ratings still has a summary snapshot', t => {
+test('a previous album without ratings still has a summary snapshot', () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('g', 'channel', 'role', undefined, 0);
   store.addAlbum('g', 'a', 'Unrated', 'Artist');
   const first = store.reserveNow('g');

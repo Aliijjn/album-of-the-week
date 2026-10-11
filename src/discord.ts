@@ -1,4 +1,6 @@
+import { parseHistoryTime } from './admin.js';
 import { parseAlbum } from './autocomplete.js';
+import { helpReply } from './commands.js';
 import {
   Client, DiscordAPIError, EmbedBuilder, MessageFlags, PermissionFlagsBits,
   type ChatInputCommandInteraction,
@@ -7,7 +9,7 @@ import type { Delivery, Scheduler } from './scheduler.js';
 import { createHash } from 'node:crypto';
 import { Store, UserError, type AlbumSummary } from './store.js';
 
-import { albumText, ratingText, albumPage, ratingsPage } from './pages.js';
+import { albumText, ratingText, albumPage, ratingsPage, roundsPage } from './pages.js';
 
 export function discordDelivery(client: Client): Delivery {
   return {
@@ -24,7 +26,7 @@ export function discordDelivery(client: Client): Delivery {
     async send(guild, pick, noticeSent, summaryPageSent) {
       const channel = await client.channels.fetch(guild.channel_id!);
       if (!channel || !channel.isTextBased() || channel.isDMBased() || !channel.isSendable() || channel.guildId !== guild.id) {
-        throw new Error('The configured announcement channel is unavailable. Run /aotw setup.');
+        throw new Error('The configured announcement channel is unavailable. Run /aotw admin setup.');
       }
       const role = guild.role_id ? await channel.guild.roles.fetch(guild.role_id) : null;
       const me = await channel.guild.members.fetchMe();
@@ -32,7 +34,7 @@ export function discordDelivery(client: Client): Delivery {
       if (!role || role.id === guild.id || !permissions?.has([
         PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks,
       ]) || (!role.mentionable && !permissions.has(PermissionFlagsBits.MentionEveryone))) {
-        throw new Error('Announcement permissions or ping role need repair. Run /aotw setup.');
+        throw new Error('Announcement permissions or ping role need repair. Run /aotw admin setup.');
       }
       if (pick.rerolled_by && !pick.reroll_notice_id) {
         const notice = await channel.send({
@@ -80,13 +82,58 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, st
   const guildId = interaction.guildId;
   const userId = interaction.user.id;
   const sub = interaction.options.getSubcommand();
+  const group = interaction.options.getSubcommandGroup(false);
   const respond = async (content: string) => { await interaction.editReply({ content, allowedMentions: { parse: [] } }); };
   try {
     if (interaction.commandName !== 'aotw') throw new UserError('This command has moved. Use /aotw.');
-    if (!['add', 'list', 'timezone', 'rename', 'remove', 'rate', 'ratings', 'setup', 'pause', 'reroll', 'status', 'history', 'leaderboard', 'current'].includes(sub)) {
-      throw new UserError('This command is out of date. Refresh Discord and choose a current /aotw command.');
+    const valid = group === 'queue' ? ['add', 'list', 'remove', 'rename']
+      : group === 'admin' ? ['setup', 'pause', 'reroll', 'add-history', 'edit', 'delete-history', 'rounds', 'set-round']
+      : group === null ? ['help', 'timezone', 'rate', 'ratings', 'status', 'history', 'leaderboard', 'current'] : [];
+    if (!valid.includes(sub)) throw new UserError('This command has moved. Refresh Discord and use /aotw help for the current commands.');
+    if (group === 'admin' && !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) throw new UserError('You need Manage Server permission.');
+    if (group === 'admin' && ['add-history', 'edit', 'delete-history', 'set-round'].includes(sub) && scheduler?.isRunning()) {
+      throw new UserError('An announcement is being processed. Please try again shortly.');
     }
-    if (['add', 'list', 'remove'].includes(sub)) {
+    if (group === 'admin' && sub === 'rounds') {
+      await interaction.editReply(roundsPage(store, guildId, userId));
+      return;
+    }
+    if (group === 'admin' && sub === 'set-round') {
+      const user = interaction.options.getUser('user', true);
+      const round = interaction.options.getInteger('round', true);
+      store.setParticipantRound(guildId, user.id, round);
+      await respond(`Set <@${user.id}>'s last selected round to ${round}. Server round: ${store.guild(guildId).round}.`);
+      return;
+    }
+    if (group === 'admin' && sub === 'add-history') {
+      const album = store.addHistory(guildId, interaction.options.getUser('user', true).id,
+        interaction.options.getString('title', true), interaction.options.getString('artist', true),
+        parseHistoryTime(interaction.options.getString('start', true)), parseHistoryTime(interaction.options.getString('end', true)));
+      await respond(`Added to history: ${albumText(album)}. The active album and rotation are unchanged.`);
+      return;
+    }
+    if (group === 'admin' && (sub === 'edit' || sub === 'delete-history')) {
+      const { id } = parseAlbum(interaction.options.getString('album', true), 'pick');
+      if (sub === 'delete-history') {
+        const album = store.deleteHistory(guildId, id);
+        await respond(`Deleted from history: ${albumText(album)}, including its ratings. Previously sent Discord messages remain unchanged.`);
+      } else {
+        const start = interaction.options.getString('start');
+        const end = interaction.options.getString('end');
+        const album = store.editPick(guildId, id, {
+          title: interaction.options.getString('title') ?? undefined,
+          artist: interaction.options.getString('artist') ?? undefined,
+          user: interaction.options.getUser('user')?.id,
+          start: start === null ? undefined : parseHistoryTime(start),
+          end: end === null ? undefined : parseHistoryTime(end),
+        });
+        await respond(`Updated: ${albumText(album)}. Existing ratings are kept. Previously sent Discord messages remain unchanged.`);
+      }
+      return;
+    }
+    if (sub === 'help') {
+      await interaction.editReply(helpReply());
+    } else if (['add', 'list', 'remove'].includes(sub)) {
       if (sub === 'add') {
         const album = store.addAlbum(guildId, userId, interaction.options.getString('title', true), interaction.options.getString('artist', true));
         await respond(`Added: ${albumText(album)}. You have ${store.albums(guildId, userId).length}/5 albums queued.`);
@@ -95,18 +142,18 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, st
         // Embeds accommodate five maximum-length album + artist names safely.
         await interaction.editReply({
           embeds: [new EmbedBuilder().setTitle(`Your queue (${albums.length}/5)`)
-            .setDescription(albums.map(a => albumText(a)).join('\n') || 'Your queue is empty. Use /aotw add.')], allowedMentions: { parse: [] }
+            .setDescription(albums.map(a => albumText(a)).join('\n') || 'Your queue is empty. Use /aotw queue add.')], allowedMentions: { parse: [] }
         });
       } else if (sub === 'remove') {
         const removed = store.removeAlbum(guildId, userId, parseAlbum(interaction.options.getString('album', true), 'queue').id);
-        await respond(removed ? 'Album removed from your queue.' : 'That album is not in your queue. Search again with /aotw remove.');
+        await respond(removed ? 'Album removed from your queue.' : 'That album is not in your queue. Search again with /aotw queue remove.');
       }
     } else if (sub === 'timezone') {
       const timezone = interaction.options.getString('timezone');
       store.setUserTimezone(userId, timezone);
       await respond(timezone ? `Album picker times will use ${timezone}.` : 'Album picker times will use each server’s configured timezone.');
     } else if (sub === 'rename') {
-      const { kind: entry, id } = parseAlbum(interaction.options.getString('album', true));
+      const { kind: entry, id } = parseAlbum(interaction.options.getString('album', true), 'queue');
       const album = store.rename(guildId, userId, interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false,
         entry, id, interaction.options.getString('title', true), interaction.options.getString('artist') ?? undefined);
       await respond(`Renamed: ${albumText(album)}.`);
@@ -125,7 +172,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, st
         await respond('A new album has been announced and added to history.');
       } else if (sub === 'pause') {
         store.pause(guildId);
-        await respond('Weekly announcements are paused. Use /aotw setup to resume.');
+        await respond('Weekly announcements are paused. Use /aotw admin setup to resume.');
       } else if (sub === 'setup') {
         const guild = interaction.guild ?? await interaction.client.guilds.fetch(guildId);
         const old = store.guild(guildId);
@@ -172,7 +219,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, st
           const page = sub === 'history' ? interaction.options.getInteger('page') ?? 1 : 1;
           await interaction.editReply(albumPage(store, guildId, userId, sub, page));
         } else {
-          const current = store.history(guildId, 1)[0];
+          const current = store.current(guildId);
           await interaction.editReply({
             embeds: [new EmbedBuilder().setTitle('Current album of the week')
               .setDescription(current ? `${albumText(current)}\nSubmitted by <@${current.user_id}>\n${ratingText(current)}` : 'No albums announced yet.')], allowedMentions: { parse: [] }

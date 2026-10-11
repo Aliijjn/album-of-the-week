@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, onTestFinished } from 'bun:test';
 import { Scheduler, type Delivery } from '../src/scheduler.js';
 import { Store } from '../src/store.js';
 
-function setup(t: { after: (fn: () => void) => void }) {
+function setup() {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('g', 'channel', 'role', undefined, Date.parse('2026-09-18T00:00:00Z'));
   store.addAlbum('g', 'alice', 'A', 'Artist');
   return { store, due: store.guild('g').next_run! };
@@ -14,8 +14,8 @@ const delivery = (overrides: Partial<Delivery> = {}): Delivery => ({
   available: () => true, isMember: async () => true, send: async () => 'message', ...overrides,
 });
 
-test('shutdown succeeds after a rejected reroll and prevents new work', async t => {
-  const { store, due } = setup(t);
+test('shutdown succeeds after a rejected reroll and prevents new work', async () => {
+  const { store, due } = setup();
   const scheduler = new Scheduler(store, delivery({ send: async () => { throw new Error('Offline'); } }), () => {});
   await assert.rejects(scheduler.reroll('g', 'admin'), /retry automatically/);
   const pending = store.pending('g')!;
@@ -26,8 +26,8 @@ test('shutdown succeeds after a rejected reroll and prevents new work', async t 
   assert.equal(store.historyCount('g'), 0);
 });
 
-test('shutdown drains an in-flight send before returning', async t => {
-  const { store, due } = setup(t);
+test('shutdown drains an in-flight send before returning', async () => {
+  const { store, due } = setup();
   let release!: () => void;
   let entered!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
@@ -45,8 +45,8 @@ test('shutdown drains an in-flight send before returning', async t => {
   assert.equal(store.historyCount('g'), 1);
 });
 
-test('manual rerolls share the polling lock and retry the same new announcement', async t => {
-  const { store, due } = setup(t);
+test('manual rerolls share the polling lock and retry the same new announcement', async () => {
+  const { store, due } = setup();
   store.addAlbum('g', 'bob', 'B', 'Artist');
   let calls = 0;
   const targets: (string | null)[] = [];
@@ -71,8 +71,8 @@ test('manual rerolls share the polling lock and retry the same new announcement'
   assert.equal(store.pending('g'), undefined);
 });
 
-test('retries the same pick after send failure, then records delivery exactly once', async t => {
-  const { store, due } = setup(t);
+test('retries the same pick after send failure, then records delivery exactly once', async () => {
+  const { store, due } = setup();
   const nonces: string[] = [];
   const errors: unknown[] = [];
   const scheduler = new Scheduler(store, delivery({ send: async (_guild, pick) => {
@@ -92,8 +92,8 @@ test('retries the same pick after send failure, then records delivery exactly on
   assert.equal(store.history('g').length, 1);
 });
 
-test('prunes departed members before drawing', async t => {
-  const { store, due } = setup(t);
+test('prunes departed members before drawing', async () => {
+  const { store, due } = setup();
   store.addAlbum('g', 'bob', 'B', 'Artist');
   const scheduler = new Scheduler(store, delivery({ isMember: async (_guild, user) => user === 'bob' }));
   await scheduler.tick(due);
@@ -101,16 +101,16 @@ test('prunes departed members before drawing', async t => {
   assert.equal(store.albums('g', 'alice').length, 0);
 });
 
-test('membership API failure preserves queues and due time', async t => {
-  const { store, due } = setup(t);
+test('membership API failure preserves queues and due time', async () => {
+  const { store, due } = setup();
   const scheduler = new Scheduler(store, delivery({ isMember: async () => { throw new Error('Network failure'); } }), () => {});
   await scheduler.tick(due);
   assert.equal(store.albums('g', 'alice').length, 1);
   assert.equal(store.guild('g').next_run, due);
 });
 
-test('overlapping ticks cannot send duplicate announcements', async t => {
-  const { store, due } = setup(t);
+test('overlapping ticks cannot send duplicate announcements', async () => {
+  const { store, due } = setup();
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   let calls = 0;
@@ -122,8 +122,8 @@ test('overlapping ticks cannot send duplicate announcements', async t => {
   assert.equal(calls, 1);
 });
 
-test('one server failure does not block another and disconnected guilds remain due', async t => {
-  const { store, due } = setup(t);
+test('one server failure does not block another and disconnected guilds remain due', async () => {
+  const { store, due } = setup();
   for (const id of ['other', 'offline']) {
     store.configure(id, 'channel', 'role', undefined, due - 1000);
     store.addAlbum(id, 'bob', 'B', 'Artist');

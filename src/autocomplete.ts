@@ -25,12 +25,15 @@ export async function handleAutocomplete(interaction: AutocompleteInteraction, s
     await handleTimezoneAutocomplete(interaction);
     return;
   }
-  if (!interaction.inGuild() || !['rename', 'remove', 'rate', 'ratings'].includes(command)) {
+  const group = interaction.options.getSubcommandGroup(false);
+  const admin = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false;
+  const valid = group === 'queue' ? ['rename', 'remove'] : group === 'admin' && admin ? ['edit', 'delete-history'] : group === null ? ['rate', 'ratings'] : [];
+  if (!interaction.inGuild() || !valid.includes(command)) {
     await interaction.respond([]);
     return;
   }
   const albums = store.searchAlbums(interaction.guildId, interaction.user.id,
-    command as 'rename' | 'remove' | 'rate' | 'ratings',
+    command as 'rename' | 'remove' | 'rate' | 'ratings' | 'edit' | 'delete-history',
     interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false, String(focused.value));
   const timezone = store.userTimezone(interaction.user.id) ?? store.guild(interaction.guildId).timezone;
   const times = albums.map(album => album.kind === 'pick' ? pickedTime(album.scheduled_at!, timezone, interaction.locale) : '');
@@ -41,7 +44,7 @@ export async function handleAutocomplete(interaction: AutocompleteInteraction, s
     occurrences.set(time, occurrence);
     // Same-minute rerolls still need distinct labels after dropping seconds and milliseconds.
     const duplicate = times.filter(candidate => candidate === time).length > 1 ? ` (${occurrence})` : '';
-    const owner = interaction.guild?.members.cache.get(album.user_id)?.displayName ?? album.user_id;
+    const owner = interaction.guild?.members.cache.get(album.user_id)?.displayName ?? 'another member';
     const suffix = album.kind === 'queue'
       ? ` [Queued${album.user_id === interaction.user.id ? '' : ` by ${owner.slice(0, 20)}`}]`
       : ` [Picked ${time}${duplicate}]`;

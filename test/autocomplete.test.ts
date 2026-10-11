@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, onTestFinished } from 'bun:test';
 import { PermissionsBitField, PermissionFlagsBits, type AutocompleteInteraction, type ChatInputCommandInteraction } from 'discord.js';
 import { Store } from '../src/store.js';
 import { handleAutocomplete, parseAlbum, pickedTime } from '../src/autocomplete.js';
@@ -13,9 +13,9 @@ function publish(store: Store, title: string, guild = 'g', owner = 'owner') {
   return pick;
 }
 
-test('search filters before limiting and respects server, ownership, delivery and rating visibility', t => {
+test('search filters before limiting and respects server, ownership, delivery and rating visibility', () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   for (const guild of ['g', 'other']) store.configure(guild, 'channel', 'role', undefined, 0);
   const old = publish(store, 'Rare ÉCHO');
   for (let i = 0; i < 27; i++) publish(store, `Album ${i}`);
@@ -32,34 +32,39 @@ test('search filters before limiting and respects server, ownership, delivery an
   assert.deepEqual(search('remove', '', true).map(a => a.id), [ownQueue.id]);
   assert.equal(search('rename', 'Other queued').length, 0);
   assert.equal(search('rename', 'Other queued', true)[0]?.id, otherQueue.id);
-  assert.equal(search('rename', 'Rare')[0]?.kind, 'pick');
+  assert.equal(search('rename', 'Rare').length, 0);
+  assert.equal(store.searchAlbums('g', 'owner', 'edit', true, 'Rare')[0]?.kind, 'pick');
   assert.equal(store.searchAlbums('g', 'someone', 'rename', false, 'Rare').length, 0);
   store.reserveNow('g');
   assert.ok(search('rate').every(a => a.id !== store.pending('g')!.id));
   assert.ok(search('ratings').some(a => a.id === latest.id));
 });
 
-test('autocomplete returns bounded labels, distinct repeat picks, and typed selection values', async t => {
+test('autocomplete returns bounded labels, distinct repeat picks, and typed selection values', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('g', 'channel', 'role', undefined, 0);
   publish(store, 'A'.repeat(150));
   publish(store, 'A'.repeat(150));
   store.addAlbum('g', 'someone', 'Queued', 'Artist');
   let choices: { name: string; value: string }[] = [];
   let query = '';
+  let command = 'rename';
   const interaction = {
     commandName: 'aotw', inGuild: () => true, guildId: 'g', user: { id: 'owner' },
     memberPermissions: new PermissionsBitField(PermissionFlagsBits.ManageGuild),
-    options: { getSubcommand: () => 'rename', getFocused: () => ({ name: 'album', value: query }) },
+    options: { getSubcommand: () => command, getSubcommandGroup: () => command === 'rename' ? 'queue' : command === 'edit' ? 'admin' : null, getFocused: () => ({ name: 'album', value: query }) },
     respond: async (result: typeof choices) => { choices = result; },
   } as unknown as AutocompleteInteraction;
   await handleAutocomplete(interaction, store);
-  assert.equal(choices.length, 3);
-  assert.match(choices[0]!.name, /Queued by someone/);
+  assert.equal(choices.length, 1);
+  assert.match(choices[0]!.name, /Queued by another member/);
   assert.ok(choices.every(c => c.name.length <= 100));
-  assert.notEqual(choices[1]!.name, choices[2]!.name);
-  assert.equal(parseAlbum(choices[1]!.value).kind, 'pick');
+  command = 'edit';
+  await handleAutocomplete(interaction, store);
+  assert.equal(choices.length, 2);
+  assert.notEqual(choices[0]!.name, choices[1]!.name);
+  assert.equal(parseAlbum(choices[0]!.value).kind, 'pick');
   query = 'missing';
   await handleAutocomplete(interaction, store);
   assert.deepEqual(choices, []);
@@ -69,9 +74,9 @@ test('autocomplete returns bounded labels, distinct repeat picks, and typed sele
   assert.throws(() => parseAlbum('queue:1', 'pick'), /Select an album/);
 });
 
-test('submitted selections enforce ownership, server and reveal checks even when forged or stale', async t => {
+test('submitted selections enforce ownership, server and reveal checks even when forged or stale', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   for (const guild of ['g', 'other']) store.configure(guild, 'channel', 'role', undefined, 0);
   const active = publish(store, 'Active');
   const foreign = publish(store, 'Foreign', 'other');
@@ -82,7 +87,7 @@ test('submitted selections enforce ownership, server and reveal checks even when
   const interaction = {
     inGuild: () => true, guildId: 'g', user: { id: 'stranger' }, commandName: 'aotw',
     deferReply: async () => {}, editReply: async (r: { content: string }) => { reply = r.content; },
-    options: { getSubcommand: () => command, getString: () => selected, getNumber: () => 8 },
+    options: { getSubcommand: () => command, getSubcommandGroup: () => command === 'remove' ? 'queue' : null, getString: () => selected, getNumber: () => 8 },
   } as unknown as ChatInputCommandInteraction;
   await handleCommand(interaction, store);
   assert.match(reply, /not in your queue/);
@@ -106,7 +111,8 @@ test('submitted selections enforce ownership, server and reveal checks even when
 test('album commands register searchable string options and rate keeps selection optional', () => {
   const options = commands[0]!.toJSON().options!;
   for (const name of ['rename', 'remove', 'rate', 'ratings']) {
-    const command = options.find(o => o.name === name)!;
+    const queue = options.find(o => o.name === 'queue')!;
+    const command = (['rename', 'remove'].includes(name) && 'options' in queue ? queue.options : options)!.find(o => o.name === name)!;
     assert.ok('options' in command);
     const album = command.options!.find(o => o.name === 'album')!;
     assert.ok('autocomplete' in album && album.autocomplete);
@@ -117,15 +123,16 @@ test('album commands register searchable string options and rate keeps selection
 });
 
 
-test('picker times use personal timezone, daylight saving, locale and server fallback', async t => {
+test('picker times use personal timezone, daylight saving, locale and server fallback', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('g', 'channel', 'role', { weekday: 0, hour: 12, minute: 0, timezone: 'Asia/Tokyo' }, 0);
   publish(store, 'Album');
   let label = '';
+  const command = 'rate';
   const interaction = {
     commandName: 'aotw', inGuild: () => true, guildId: 'g', user: { id: 'owner' }, locale: 'en-GB',
-    options: { getSubcommand: () => 'rename', getFocused: () => ({ name: 'album', value: '' }) },
+    options: { getSubcommand: () => command, getSubcommandGroup: () => null, getFocused: () => ({ name: 'album', value: '' }) },
     respond: async (choices: { name: string }[]) => { label = choices[0]!.name; },
   } as unknown as AutocompleteInteraction;
   await handleAutocomplete(interaction, store);

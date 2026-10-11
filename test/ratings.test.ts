@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, onTestFinished } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,9 +14,9 @@ function publish(store: Store, guild = 'g', title = 'Album') {
   return pick;
 }
 
-test('active ratings stay hidden until a scheduled pick or reroll, including empty weeks and other servers', t => {
+test('active ratings stay hidden until a scheduled pick or reroll, including empty weeks and other servers', () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   for (const guild of ['g', 'other']) store.configure(guild, 'channel', 'role', undefined, 0);
   const first = publish(store);
   store.rate('g', 'a', 7.5);
@@ -40,9 +40,9 @@ test('active ratings stay hidden until a scheduled pick or reroll, including emp
   assert.equal(store.ratings('g', first.id).ratings[0]?.score, 9);
 });
 
-test('individual ratings paginate in descending score order and protect the requesting user', async t => {
+test('individual ratings paginate in descending score order and protect the requesting user', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('g', 'channel', 'role', undefined, 0);
   const first = publish(store);
   for (let i = 0; i < 21; i++) store.rate('g', `user${i}`, i / 2);
@@ -74,9 +74,9 @@ test('individual ratings paginate in descending score order and protect the requ
   assert.equal(updated, false);
 });
 
-test('rating a previous pick updates only that user and pick, with server and delivery checks', t => {
+test('rating a previous pick updates only that user and pick, with server and delivery checks', () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   for (const guild of ['g', 'other']) store.configure(guild, 'channel', 'role', undefined, 0);
   const first = publish(store, 'g', 'Previous');
   store.rate('g', 'a', 2);
@@ -92,7 +92,7 @@ test('rating a previous pick updates only that user and pick, with server and de
   assert.equal(store.leaderboard('g')[0]?.id, first.id);
   const other = publish(store, 'other');
   for (const id of [other.id, 999999]) assert.throws(() => store.rate('g', 'a', 5, id), /this server/);
-  for (const id of [0, -1, 1.5, NaN]) assert.throws(() => store.rate('g', 'a', 5, id), /valid pick ID/);
+  for (const id of [0, -1, 1.5, NaN]) assert.throws(() => store.rate('g', 'a', 5, id), /suggested matches/);
   store.addAlbum('g', 'submitter', 'Pending', 'Artist');
   const pending = store.reserveNow('g');
   const snapshot = pending.summary_json;
@@ -102,9 +102,9 @@ test('rating a previous pick updates only that user and pick, with server and de
   assert.equal(store.pending('g')?.summary_json, snapshot, 'previously captured summaries remain snapshots');
 });
 
-test('ratings accept endpoints and decimals, update one vote, and stay with their album and server', t => {
+test('ratings accept endpoints and decimals, update one vote, and stay with their album and server', () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   for (const guild of ['g', 'other']) store.configure(guild, 'channel', 'role', undefined, 0);
   assert.throws(() => store.rate('g', 'a', 5), /no active album/);
   const first = publish(store);
@@ -124,9 +124,9 @@ test('ratings accept endpoints and decimals, update one vote, and stay with thei
   assert.equal(store.history('other')[0]?.average, 1);
 });
 
-test('leaderboard orders by average then vote count, excludes unrated picks, and preserves ratings across rerolls', t => {
+test('leaderboard orders by average then vote count, excludes unrated picks, and preserves ratings across rerolls', () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('g', 'channel', 'role', undefined, 0);
   publish(store, 'g', 'Unrated');
   publish(store, 'g', 'One vote');
@@ -150,9 +150,9 @@ test('leaderboard orders by average then vote count, excludes unrated picks, and
   assert.equal(store.history('g')[1]?.average, 10);
 });
 
-test('button pagination updates the original result and protects the requesting user', async t => {
+test('button pagination updates the original result and protects the requesting user', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('g', 'channel', 'role', undefined, 0);
   for (let i = 1; i <= 7; i++) { publish(store, 'g', `Album ${i}`); store.rate('g', 'a', i); }
   for (const kind of ['history', 'leaderboard'] as const) {

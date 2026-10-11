@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'bun:test';
 import type { AutocompleteInteraction } from 'discord.js';
 import { timezoneChoices, handleAutocomplete } from '../src/timezones.js';
 import { commands } from '../src/commands.js';
@@ -22,12 +22,13 @@ test('timezone autocomplete responds with choices and is enabled in command regi
   let choices: unknown;
   const interaction = {
     commandName: 'aotw',
-    options: { getSubcommand: () => 'setup', getFocused: () => ({ name: 'timezone', value: 'Tokyo' }) },
+    options: { getSubcommand: () => 'setup', getSubcommandGroup: () => 'admin', getFocused: () => ({ name: 'timezone', value: 'Tokyo' }) },
     respond: async (result: unknown) => { choices = result; },
   } as unknown as AutocompleteInteraction;
   await handleAutocomplete(interaction);
   assert.deepEqual(choices, [{ name: 'Asia/Tokyo', value: 'Asia/Tokyo' }]);
-  const setup = commands[0]!.toJSON().options?.find(option => option.name === 'setup');
+  const admin = commands[0]!.toJSON().options?.find(option => option.name === 'admin');
+  const setup = admin && 'options' in admin ? admin.options?.find(option => option.name === 'setup') : undefined;
   assert.ok(setup && 'options' in setup);
   const timezone = setup.options?.find(option => option.name === 'timezone');
   assert.ok(timezone && 'autocomplete' in timezone && timezone.autocomplete);

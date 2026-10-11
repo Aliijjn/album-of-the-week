@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'bun:test';
 import { defaultSchedule, nextRun } from '../src/schedule.js';
 
 test('defaults to Sunday at noon GMT and advances past an exact occurrence', () => {

@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, onTestFinished } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/store.js';
 
 const start = Date.parse('2026-09-18T10:00:00Z');
-function fixture(t: { after: (fn: () => void) => void }) {
+function fixture() {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('guild', 'channel', 'role', undefined, start);
   return store;
 }
@@ -19,8 +19,8 @@ function pick(store: Store) {
   return result;
 }
 
-test('limits, normalization, ownership and server isolation', t => {
-  const store = fixture(t);
+test('limits, normalization, ownership and server isolation', () => {
+  const store = fixture();
   const first = store.addAlbum('guild', 'alice', '  Album   One  ', 'ARTIST');
   assert.equal(first.title, 'Album One');
   assert.throws(() => store.addAlbum('guild', 'alice', 'album one', 'artist'), /already in your queue/);
@@ -36,8 +36,8 @@ test('limits, normalization, ownership and server isolation', t => {
   assert.equal(store.albums('guild', 'alice').length, 4);
 });
 
-test('draw is user-first and users cannot repeat before the round completes', t => {
-  const store = fixture(t);
+test('draw is user-first and users cannot repeat before the round completes', () => {
+  const store = fixture();
   for (let i = 0; i < 5; i++) store.addAlbum('guild', 'alice', `A${i}`, 'Artist');
   store.addAlbum('guild', 'bob', 'B', 'Artist');
   const sizes: number[] = [];
@@ -52,8 +52,8 @@ test('draw is user-first and users cannot repeat before the round completes', t 
   assert.equal(store.history('other').length, 0);
 });
 
-test('late joiners get one current-round turn, without historical catch-up', t => {
-  const store = fixture(t);
+test('late joiners get one current-round turn, without historical catch-up', () => {
+  const store = fixture();
   for (const user of ['alice', 'bob']) {
     store.addAlbum('guild', user, 'One', 'Artist');
     store.addAlbum('guild', user, 'Two', 'Artist');
@@ -68,8 +68,8 @@ test('late joiners get one current-round turn, without historical catch-up', t =
   assert.equal(pick(store).round, 2);
 });
 
-test('removing and re-adding a queue does not reset participation', t => {
-  const store = fixture(t);
+test('removing and re-adding a queue does not reset participation', () => {
+  const store = fixture();
   store.addAlbum('guild', 'alice', 'A', 'Artist');
   store.addAlbum('guild', 'bob', 'B', 'Artist');
   assert.equal(pick(store).user_id, 'alice');
@@ -78,8 +78,8 @@ test('removing and re-adding a queue does not reset participation', t => {
   assert.equal(pick(store).user_id, 'bob');
 });
 
-test('empty schedules advance, paused servers do not draw, and downtime catches up once', t => {
-  const store = fixture(t);
+test('empty schedules advance, paused servers do not draw, and downtime catches up once', () => {
+  const store = fixture();
   const due = store.guild('guild').next_run!;
   assert.equal(store.reserveDue('guild', due - 1), undefined);
   assert.equal(store.reserveDue('guild', due), undefined);
@@ -94,8 +94,8 @@ test('empty schedules advance, paused servers do not draw, and downtime catches 
   assert.equal(store.reserveDue('guild', now), undefined);
 });
 
-test('failed selection rolls back all changes', t => {
-  const store = fixture(t);
+test('failed selection rolls back all changes', () => {
+  const store = fixture();
   store.addAlbum('guild', 'alice', 'A', 'Artist');
   const due = store.guild('guild').next_run!;
   assert.throws(() => store.reserveDue('guild', due, () => 99), /invalid user/);
@@ -128,19 +128,19 @@ test('pending picks and fairness survive reopening a database', () => {
   }
 });
 
-test('reroll adds a new pick, preserves all history and the schedule, and uses fair turns', t => {
-  const store = fixture(t);
+test('reroll adds a new pick, preserves all history and the schedule, and uses fair turns', () => {
+  const store = fixture();
   for (const user of ['alice', 'bob', 'charlie']) store.addAlbum('guild', user, user, 'Artist');
   const older = pick(store);
   const current = pick(store);
   store.markSent(current.id, 'announcement', 'original-channel');
   const next = store.guild('guild').next_run;
-  const replacement = store.reserveNow('guild', start, () => 0);
+  const replacement = store.reserveNow('guild', current.scheduled_at + 1000, () => 0);
   assert.notEqual(replacement.id, current.id);
   assert.equal(replacement.user_id, 'charlie');
   assert.equal(replacement.message_id, null);
   assert.equal(replacement.message_channel_id, null);
-  assert.equal(replacement.scheduled_at, start);
+  assert.equal(replacement.scheduled_at, current.scheduled_at + 1000);
   assert.equal(store.guild('guild').next_run, next);
   assert.throws(() => store.reserveNow('guild'), /awaiting delivery/);
   store.markSent(replacement.id, 'announcement');
@@ -149,8 +149,8 @@ test('reroll adds a new pick, preserves all history and the schedule, and uses f
   assert.equal(store.albums('guild', 'bob').length, 0);
 });
 
-test('now can make the first pick, while empty and paused rerolls leave the current pick intact', t => {
-  const store = fixture(t);
+test('now can make the first pick, while empty and paused rerolls leave the current pick intact', () => {
+  const store = fixture();
   store.addAlbum('guild', 'alice', 'A', 'Artist');
   const next = store.guild('guild').next_run;
   const first = store.reserveNow('guild', start, () => 0);
@@ -164,8 +164,8 @@ test('now can make the first pick, while empty and paused rerolls leave the curr
   assert.equal(store.history('guild')[0]?.title, 'A');
 });
 
-test('a manual draw at the due time satisfies that slot without a duplicate scheduled draw', t => {
-  const store = fixture(t);
+test('a manual draw at the due time satisfies that slot without a duplicate scheduled draw', () => {
+  const store = fixture();
   store.addAlbum('guild', 'alice', 'A', 'Artist');
   store.addAlbum('guild', 'bob', 'B', 'Artist');
   const due = store.guild('guild').next_run!;
@@ -176,8 +176,8 @@ test('a manual draw at the due time satisfies that slot without a duplicate sche
   assert.equal(store.albums('guild', 'bob').length, 1);
 });
 
-test('changing channels resets pending delivery progress without changing the saved draw', t => {
-  const store = fixture(t);
+test('changing channels resets pending delivery progress without changing the saved draw', () => {
+  const store = fixture();
   store.addAlbum('guild', 'alice', 'Album', 'Artist');
   const pending = store.reserveNow('guild', start, () => 0, 'admin');
   store.markRerollNotice(pending.id, 'notice');
@@ -204,7 +204,7 @@ test('an original database upgrades without losing albums, history or server set
     original.addAlbum('guild', 'alice', 'Queued', 'Artist');
     // Recreate the schema before delivery tracking and ratings were added.
     original.db.exec('DROP TABLE ratings');
-    for (const name of ['message_channel_id', 'rerolled_by', 'reroll_notice_id', 'summary_json', 'summary_pages_sent']) {
+    for (const name of ['message_channel_id', 'rerolled_by', 'reroll_notice_id', 'summary_json', 'summary_pages_sent', 'ended_at', 'is_history']) {
       original.db.exec(`ALTER TABLE picks DROP COLUMN ${name}`);
     }
   } finally { original.close(); }

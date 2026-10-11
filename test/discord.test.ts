@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, onTestFinished } from 'bun:test';
 import { Collection, PermissionsBitField, PermissionFlagsBits, type ChatInputCommandInteraction, type Client, type EmbedBuilder } from 'discord.js';
 import { discordDelivery, handleCommand } from '../src/discord.js';
 import { Store, type Guild, type Pick } from '../src/store.js';
 
-test('rate command forwards an optional album selection and reports the selected album', async t => {
+test('rate command forwards an optional album selection and reports the selected album', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('guild', 'channel', 'role', undefined, 0);
   const ids: number[] = [];
   for (const title of ['Old album', 'Current album']) {
@@ -21,7 +21,7 @@ test('rate command forwards an optional album selection and reports the selected
     inGuild: () => true, deferReply: async () => {},
     editReply: async (reply: { content: string }) => { replies.push(reply); },
     guildId: 'guild', user: { id: 'a' }, commandName: 'aotw',
-    options: { getSubcommand: () => 'rate', getNumber: () => 8, getString: () => id === null ? null : `pick:${id}` },
+    options: { getSubcommand: () => 'rate', getSubcommandGroup: () => null, getNumber: () => 8, getString: () => id === null ? null : `pick:${id}` },
   } as unknown as ChatInputCommandInteraction;
   await handleCommand(interaction, store);
   assert.match(replies[0]!.content, /Old album/);
@@ -34,9 +34,9 @@ test('rate command forwards an optional album selection and reports the selected
   assert.equal(store.history('guild')[0]?.average, 8);
 });
 
-test('setup cannot move an announcement while delivery is running', async t => {
+test('setup cannot move an announcement while delivery is running', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('guild', 'original-channel', 'role');
   const replies: { content: string }[] = [];
   const role = { id: 'role', name: 'album-of-the-week', mentionable: true };
@@ -51,7 +51,7 @@ test('setup cannot move an announcement while delivery is running', async t => {
       members: { fetchMe: async () => ({}) },
     },
     options: {
-      getSubcommand: () => 'setup', getChannel: () => ({ id: 'new-channel' }),
+      getSubcommand: () => 'setup', getSubcommandGroup: () => 'admin', getChannel: () => ({ id: 'new-channel' }),
       getRole: () => role, getString: () => null, getInteger: () => null,
     },
   } as unknown as ChatInputCommandInteraction;
@@ -60,23 +60,23 @@ test('setup cannot move an announcement while delivery is running', async t => {
   assert.equal(store.guild('guild').channel_id, 'original-channel');
 });
 
-test('outdated subcommands are rejected instead of silently showing the current album', async t => {
+test('outdated subcommands are rejected instead of silently showing the current album', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   const replies: { content: string }[] = [];
   const interaction = {
     inGuild: () => true, deferReply: async () => {},
     editReply: async (reply: { content: string }) => { replies.push(reply); },
     guildId: 'guild', user: { id: 'alice' }, commandName: 'aotw',
-    options: { getSubcommand: () => 'now' },
+    options: { getSubcommand: () => 'now', getSubcommandGroup: () => null },
   } as unknown as ChatInputCommandInteraction;
   await handleCommand(interaction, store);
-  assert.match(replies[0]!.content, /out of date/);
+  assert.match(replies[0]!.content, /has moved/);
 });
 
-test('history pages reach older picks, exclude other servers and pending picks, and handle invalid pages', async t => {
+test('history pages reach older picks, exclude other servers and pending picks, and handle invalid pages', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('guild', 'channel', 'role', undefined, 0);
   for (let i = 1; i <= 8; i++) {
     store.addAlbum('guild', 'alice', `Album ${i}`, 'Artist');
@@ -93,7 +93,7 @@ test('history pages reach older picks, exclude other servers and pending picks, 
     inGuild: () => true, deferReply: async () => {},
     editReply: async (reply: typeof replies[number]) => { replies.push(reply); },
     guildId: 'guild', user: { id: 'alice' }, commandName: 'aotw',
-    options: { getSubcommand: () => 'history', getInteger: () => page },
+    options: { getSubcommand: () => 'history', getSubcommandGroup: () => null, getInteger: () => page },
   } as unknown as ChatInputCommandInteraction;
   await handleCommand(interaction, store);
   const first = replies[0]!.embeds![0]!.toJSON();
@@ -116,9 +116,9 @@ test('history pages reach older picks, exclude other servers and pending picks, 
   assert.match(empty.footer!.text, /Page 1 of 1 · 0 albums/);
 });
 
-test('runtime permission checks reject admin commands even if command visibility is overridden', async t => {
+test('runtime permission checks reject admin commands even if command visibility is overridden', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('guild', 'channel', 'role');
   const replies: { content: string }[] = [];
   const interaction = {
@@ -126,7 +126,7 @@ test('runtime permission checks reject admin commands even if command visibility
     deferReply: async () => {},
     editReply: async (reply: { content: string }) => { replies.push(reply); },
     guildId: 'guild', user: { id: 'alice' },
-    commandName: 'aotw', options: { getSubcommand: () => 'pause' },
+    commandName: 'aotw', options: { getSubcommand: () => 'pause', getSubcommandGroup: () => 'admin' },
     memberPermissions: new PermissionsBitField(),
   } as unknown as ChatInputCommandInteraction;
   await handleCommand(interaction, store);
@@ -169,9 +169,9 @@ test('announcements allow only the configured role ping and reuse the saved nonc
   assert.equal(sent.length, 2);
 });
 
-test('reroll notice precedes the album and is not repeated after an album send failure', async t => {
+test('reroll notice precedes the album and is not repeated after an album send failure', async () => {
   const store = new Store(':memory:');
-  t.after(() => store.close());
+  onTestFinished(() => store.close());
   store.configure('guild', 'channel', 'role');
   store.addAlbum('guild', 'submitter', 'Album', 'Artist');
   const pick = store.reserveNow('guild', Date.now(), undefined, 'admin');

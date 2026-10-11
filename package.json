@@ -3,15 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.18.0" },
+  "engines": {
+    "bun": ">=1.4.3"
+  },
   "scripts": {
-    "dev": "node --env-file-if-exists=.env --import tsx --watch src/index.ts",
-    "build": "tsc -p tsconfig.build.json",
-    "start": "node --env-file-if-exists=.env dist/index.js",
-    "register": "node --env-file-if-exists=.env --import tsx src/register.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts",
-    "check": "npm run typecheck && npm test && npm run build"
+    "dev": "bun --watch src/index.ts",
+    "build": "bun --bun tsc -p tsconfig.build.json",
+    "start": "bun dist/index.js",
+    "register": "bun src/register.ts",
+    "typecheck": "bun --bun tsc --noEmit",
+    "test": "bun test ./test",
+    "check": "bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
     "cron-parser": "^5.4.0",
@@ -21,7 +23,8 @@
   "devDependencies": {
     "@types/express": "^5.0.3",
     "@types/node": "^22.18.0",
-    "tsx": "^4.20.5",
-    "typescript": "^5.9.2"
-  }
+    "typescript": "^5.9.2",
+    "@types/bun": "^1.4.2"
+  },
+  "packageManager": "bun@1.4.3"
 }
