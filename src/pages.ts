@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, escapeMarkdown, MessageFlags, PermissionFlagsBits, type ButtonInteraction } from 'discord.js';
 import { Store, UserError, type RatedPick } from './store.js';
+import { helpReply, type HelpSection } from './commands.js';
 
 export const albumText = (pick: { title: string; artist: string }) => `**${escapeMarkdown(pick.title)}** - ${escapeMarkdown(pick.artist)}`;
 export const ratingText = (pick: RatedPick) => !pick.ratings_revealed ? 'Ratings hidden until the next pick' : pick.average === null ? 'No ratings' : `${pick.average.toFixed(2)}/10 (${pick.rating_count} ${pick.rating_count === 1 ? 'rating' : 'ratings'})`;
@@ -56,6 +57,16 @@ export function ratingsPage(store: Store, guildId: string, userId: string, id: n
 }
 
 export async function handlePageButton(interaction: ButtonInteraction, store: Store): Promise<void> {
+  const helpMatch = /^aotw:help:([^:]+):(listen|queue|admin)$/.exec(interaction.customId);
+  if (helpMatch && interaction.inGuild()) {
+    if (helpMatch[1] !== interaction.user.id) {
+      await interaction.reply({ content: 'Open your own guide with /aotw help.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.deferUpdate();
+    await interaction.editReply(helpReply(interaction.user.id, helpMatch[2] as HelpSection));
+    return;
+  }
   const roundsMatch = /^aotw:rounds:([^:]+):(\d+)$/.exec(interaction.customId);
   if (roundsMatch && interaction.inGuild()) {
     if (roundsMatch[1] !== interaction.user.id || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {

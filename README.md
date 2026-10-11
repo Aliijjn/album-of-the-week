@@ -36,7 +36,7 @@ bun run start
 
 | Command | Purpose |
 | --- | --- |
-| `/aotw help` | List all commands, their options, permissions and uses |
+| `/aotw help` | Browse Listen & rate, Your queue and Admin help using section buttons |
 | `/aotw queue add title artist` | Add a submission, up to five queued albums per user per server |
 | `/aotw timezone [timezone]` | Set your personal timezone for album pickers; omit to reset to the server setting |
 | `/aotw queue list` | View your queued albums |

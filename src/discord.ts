@@ -132,7 +132,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, st
       return;
     }
     if (sub === 'help') {
-      await interaction.editReply(helpReply());
+      await interaction.editReply(helpReply(userId));
     } else if (['add', 'list', 'remove'].includes(sub)) {
       if (sub === 'add') {
         const album = store.addAlbum(guildId, userId, interaction.options.getString('title', true), interaction.options.getString('artist', true));

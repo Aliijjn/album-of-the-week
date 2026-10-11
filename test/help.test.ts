@@ -1,27 +1,29 @@
+import { handlePageButton } from '../src/pages.js';
 import assert from 'node:assert/strict';
 import { test, onTestFinished } from 'bun:test';
-import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
-import { commands, helpReply, commandHelpFields } from '../src/commands.js';
+import { MessageFlags, type ButtonInteraction, type ChatInputCommandInteraction } from 'discord.js';
+import { helpReply, commandHelpFields } from '../src/commands.js';
 import { handleCommand } from '../src/discord.js';
 import { Store } from '../src/store.js';
 
-test('help lists every other registered command, options and guidance within Discord limits', () => {
-  const reply = helpReply();
-  const embed = reply.embeds[0]!.toJSON();
-  const fields = embed.fields!;
-  for (const command of commandHelpFields()) {
-    assert.equal(fields.filter(field => field.name === command.name).length, 1);
+test('help sections cover every command with code blocks and stay within Discord limits', () => {
+  const replies = (['listen', 'queue', 'admin'] as const).map(section => helpReply('user', section));
+  const text = replies.map(reply => JSON.stringify(reply.embeds[0]!.toJSON())).join('\n');
+  for (const command of commandHelpFields()) assert.ok(text.includes(command.name));
+  assert.match(text, /8.5/);
+  assert.match(text, /Manage Server/);
+  assert.doesNotMatch(text, /\bIDs?\b|pick:\d|queue:\d/);
+  for (const reply of replies) {
+    const embed = reply.embeds[0]!.toJSON();
+    assert.ok(embed.fields!.length <= 25);
+    assert.ok(embed.fields!.every(field => field.name.length <= 256 && field.value.length <= 1024));
+    assert.ok(reply.embeds[0]!.length <= 6000);
+    assert.ok(embed.fields![0]!.value.startsWith('```text\n/aotw '));
+    assert.match(embed.fields![0]!.name, /├─/);
+    assert.equal(reply.components[0]!.toJSON().components.filter(button => button.disabled).length, 1);
+    assert.deepEqual(reply.allowedMentions, { parse: [] });
   }
-  assert.ok(fields.some(field => field.name.startsWith('/aotw admin add-history ')));
-  assert.ok(fields.some(field => field.name.startsWith('/aotw queue rename ')));
-  assert.ok(fields.length <= 25);
-  assert.ok(fields.every(field => field.name.length <= 256 && field.value.length <= 1024));
-  assert.ok(reply.embeds[0]!.length <= 6000);
-  assert.match(JSON.stringify(embed), /8.5/);
-  assert.match(JSON.stringify(embed), /Manage Server/);
-  assert.match(fields.find(f => f.name.startsWith('/aotw rate '))!.name, /<score> \[album\]/);
-  assert.doesNotMatch(JSON.stringify(embed), /\bIDs?\b|pick:\d|queue:\d/);
-  assert.deepEqual(reply.allowedMentions, { parse: [] });
+  assert.doesNotMatch(JSON.stringify(replies[0]!.embeds), /\/aotw admin /);
 });
 
 test('help is available without admin permissions or setup and replies privately', async () => {
@@ -37,5 +39,26 @@ test('help is available without admin permissions or setup and replies privately
   } as unknown as ChatInputCommandInteraction;
   await handleCommand(interaction, store);
   assert.deepEqual(deferred, { flags: MessageFlags.Ephemeral });
-  assert.deepEqual(reply, helpReply());
+  assert.deepEqual(reply, helpReply('user'));
+});
+
+
+test('help buttons switch sections in place and protect the original requester', async () => {
+  const store = new Store(':memory:');
+  onTestFinished(() => store.close());
+  let updated = false;
+  let denied = false;
+  const interaction = {
+    inGuild: () => true, user: { id: 'user' }, customId: 'aotw:help:user:admin',
+    deferUpdate: async () => {},
+    editReply: async (reply: unknown) => { updated = true; assert.deepEqual(reply, helpReply('user', 'admin')); },
+    reply: async () => { denied = true; },
+  } as unknown as ButtonInteraction;
+  await handlePageButton(interaction, store);
+  assert.ok(updated);
+  updated = false;
+  Object.assign(interaction, { user: { id: 'other' } });
+  await handlePageButton(interaction, store);
+  assert.ok(denied);
+  assert.equal(updated, false);
 });

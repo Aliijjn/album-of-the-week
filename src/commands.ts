@@ -1,5 +1,5 @@
 import {
-  ApplicationCommandOptionType, ChannelType, EmbedBuilder, InteractionContextType, SlashCommandBuilder,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, ApplicationCommandOptionType, ChannelType, EmbedBuilder, InteractionContextType, SlashCommandBuilder,
 } from 'discord.js';
 
 export const commands = [
@@ -72,13 +72,33 @@ export function commandHelpFields() {
   });
 }
 
-export function helpReply() {
+export type HelpSection = 'listen' | 'queue' | 'admin';
+const helpSections: { key: HelpSection; label: string; intro: string; tips: string }[] = [
+  { key: 'listen', label: 'Listen & rate', intro: 'Your current album, ratings and listening history.',
+    tips: 'Rate from 0 to 10, including decimals such as **8.5**. Omit album to rate the active pick. Rating again replaces your score. Scores and averages appear when the next album is picked. Your personal timezone affects picker dates only.' },
+  { key: 'queue', label: 'Your queue', intro: 'Add and manage albums waiting to be picked.',
+    tips: 'Queue up to **5 albums**. Rename works on queued albums only and leaves the artist unchanged if omitted. You can rename your own submissions; members with **Manage Server** can rename any queued album. Remove only affects your own queue.' },
+  { key: 'admin', label: 'Admin', intro: 'Manage the schedule, album history and rotation. All commands here require **Manage Server**.',
+    tips: 'Dates accept Discord timestamps or an explicit timezone, such as `2026-10-11T12:00+02:00`. Edits preserve ratings; deleting history removes its ratings. The active album cannot be deleted. Round counters are each user’s **last selected round**, not lifetime pick counts.' },
+];
+
+export function helpReply(userId: string, section: HelpSection = 'listen') {
+  const selected = helpSections.find(item => item.key === section)!;
+  const entries = commandHelpFields().filter(command => section === 'queue' ? command.name.startsWith('/aotw queue ')
+    : section === 'admin' ? command.name.startsWith('/aotw admin ')
+    : !command.name.startsWith('/aotw queue ') && !command.name.startsWith('/aotw admin '));
   return {
-    embeds: [new EmbedBuilder().setTitle('Album of the week - Help')
-      .setDescription('<required> options must be filled in; [optional] options can be omitted. For **album**, search by title or artist and select a match. Browse results using Previous/Next.')
-      .addFields(commandHelpFields())
-      .addFields({ name: 'Ratings', value: 'Rate from 0 to 10 (decimals such as 8.5 work). Omit album for the active pick. Rating again replaces your score. Scores and averages are hidden until the next pick.' },
-        { name: 'Permissions and dates', value: 'All admin commands require Manage Server. Queue rename is for the submitter or someone with Manage Server; remove only affects your own queue. Admin dates accept Discord timestamps or ISO dates with an explicit offset, such as 2026-10-11T12:00+02:00. Your personal timezone only affects picker dates.' })],
+    embeds: [new EmbedBuilder().setColor(0x815ac0).setTitle(`Album of the week - ${selected.label}`)
+      .setDescription(`${selected.intro}\n\nChoose a section below. **<required>** options must be filled in; **[optional]** options can be omitted. For **album**, type a title or artist and select a match.`)
+      .addFields(entries.map((command, index) => ({
+        name: `${index === entries.length - 1 ? '└─' : '├─'} ${command.name.split(' ').slice(section === 'listen' ? 1 : 2)[0]}`,
+        value: `\`\`\`text\n${command.name}\n\`\`\`\n${command.value}`,
+      })))
+      .addFields({ name: 'Good to know', value: selected.tips })
+      .setFooter({ text: 'Listen & rate • Your queue • Admin' })],
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(helpSections.map(item => new ButtonBuilder()
+      .setCustomId(`aotw:help:${userId}:${item.key}`).setLabel(item.label)
+      .setStyle(item.key === section ? ButtonStyle.Primary : ButtonStyle.Secondary).setDisabled(item.key === section)))],
     allowedMentions: { parse: [] as [] },
   };
 }
