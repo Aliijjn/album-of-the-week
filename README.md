@@ -93,11 +93,3 @@ docker compose up --build -d
 ```
 
 Discord does not expose your device timezone to bots. Set `/aotw timezone timezone:Europe/Amsterdam` once to personalize picker times across servers. Daylight saving is handled automatically; the UTC offset is shown to avoid ambiguity. This does not change the weekly schedule.
-
-## Moving from Node to Bun
-
-Keep your existing `DATABASE_PATH` value and Railway volume mounted at `/app/data`. Bun opens the same SQLite database directly; no export, reset or data conversion is needed. Deploy the updated Dockerfile and leave Railway's custom start command unset (or use `bun dist/index.js`). Local `.env` files are loaded automatically by Bun. Run `bun run check` to type-check, test and build. Command registration is unchanged by this runtime migration.
-
-All `/aotw admin` commands require **Manage Server**. History imports and edits use dates with an explicit timezone offset (for example `2026-10-11T12:00+02:00`) or Discord timestamps (for example `<t:1791712800:F>`). End must be later than start, and dates cannot be in the future. Imported albums can be rated immediately. History is ordered by start time. Edits and deletions leave old Discord messages unchanged.
-
-The per-user counter is the **last selected round**, not a lifetime pick count. A user with queued albums and a counter below the current server round is eligible; a counter equal to the current round means they have already had their turn. `set-round` changes eligibility without rewriting history or changing the server round. History and round changes wait until any pending announcement finishes.
